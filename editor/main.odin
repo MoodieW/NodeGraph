@@ -45,6 +45,8 @@ RenderPipeline :: struct {
 	finished_semaphores:  []vk.Semaphore,
 	in_flight_fences:     [MAX_FRAMES_IN_FLIGHT]vk.Fence,
 	current_frame:        int,
+	layout:               vk.PipelineLayout,
+	grahpics_pipeline:    vk.Pipeline,
 }
 
 //debuf callback
@@ -85,6 +87,148 @@ create_shader_module :: proc(device: vk.Device, code: []byte) -> (vk.ShaderModul
 	}
 
 	return shader_module, true
+}
+
+create_graphics_pipeline :: proc(
+	device: vk.Device,
+	extent: vk.Extent2D,
+	renderpass: vk.RenderPass,
+	layout: ^vk.PipelineLayout,
+	gp: ^vk.Pipeline,
+) -> bool {
+	// read Shader code
+	vert_code, vert_ok := read_file("./shaders/triangle.vert.spv")
+	if !vert_ok do return false
+	defer delete(vert_code)
+
+	frag_code, frag_ok := read_file("./shaders/triangle.frag.spv")
+	if !frag_ok do return false
+	defer delete(frag_code)
+
+	// create shader modules
+	vert_module, vert_mod_ok := create_shader_module(device, vert_code)
+	if !vert_mod_ok do return false
+	defer vk.DestroyShaderModule(device, vert_module, nil)
+
+	frag_module, frag_mod_ok := create_shader_module(device, frag_code)
+	if !vert_mod_ok do return false
+	defer vk.DestroyShaderModule(device, frag_module, nil)
+
+	vert_stage := vk.PipelineShaderStageCreateInfo {
+		sType  = .PIPELINE_SHADER_STAGE_CREATE_INFO,
+		stage  = {.VERTEX},
+		module = vert_module,
+		pName  = "main",
+	}
+
+	frag_stage := vk.PipelineShaderStageCreateInfo {
+		sType  = .PIPELINE_SHADER_STAGE_CREATE_INFO,
+		stage  = {.FRAGMENT},
+		module = frag_module,
+		pName  = "main",
+	}
+
+	shader_stages := [2]vk.PipelineShaderStageCreateInfo{vert_stage, frag_stage}
+
+	// hardcoded in the acompiled shader
+	vertex_input_info := vk.PipelineVertexInputStateCreateInfo {
+		sType                           = .PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+		vertexBindingDescriptionCount   = 0,
+		vertexAttributeDescriptionCount = 0,
+	}
+
+	// input assembly
+	input_assembly := vk.PipelineInputAssemblyStateCreateInfo {
+		sType                  = .PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+		topology               = .TRIANGLE_LIST,
+		primitiveRestartEnable = false,
+	}
+
+	// viewport
+	viewport := vk.Viewport {
+		x        = 0.0,
+		y        = 0.0,
+		width    = f32(extent.width),
+		height   = f32(extent.height),
+		minDepth = 0.0,
+		maxDepth = 1.0,
+	}
+
+	scissor := vk.Rect2D {
+		offset = {0, 0},
+		extent = extent,
+	}
+
+	viewport_state := vk.PipelineViewportStateCreateInfo {
+		sType         = .PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+		viewportCount = 1,
+		pViewports    = &viewport,
+		scissorCount  = 1,
+		pScissors     = &scissor,
+	}
+
+	rasterizer := vk.PipelineRasterizationStateCreateInfo {
+		sType                   = .PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+		depthClampEnable        = false,
+		rasterizerDiscardEnable = false,
+		polygonMode             = .FILL,
+		lineWidth               = 1.0,
+		cullMode                = {.BACK},
+		frontFace               = .CLOCKWISE,
+		depthBiasEnable         = false,
+	}
+
+	multsampling := vk.PipelineMultisampleStateCreateInfo {
+		sType                = .PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+		sampleShadingEnable  = false,
+		rasterizationSamples = {._1},
+	}
+
+	color_blend_attachment := vk.PipelineColorBlendAttachmentState {
+		colorWriteMask = {.R, .G, .B, .A},
+		blendEnable    = false,
+	}
+
+	color_blending := vk.PipelineColorBlendStateCreateInfo {
+		sType           = .PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+		logicOpEnable   = false,
+		logicOp         = .COPY,
+		attachmentCount = 1,
+		pAttachments    = &color_blend_attachment,
+	}
+
+	layout_info := vk.PipelineLayoutCreateInfo {
+		sType = .PIPELINE_LAYOUT_CREATE_INFO,
+	}
+
+	if vk.CreatePipelineLayout(device, &layout_info, nil, layout) != vk.Result.SUCCESS {
+		fmt.println("Unabel to create Pipeline layout")
+		return false
+	}
+
+	pipeline_info := vk.GraphicsPipelineCreateInfo {
+		sType               = .GRAPHICS_PIPELINE_CREATE_INFO,
+		stageCount          = 2,
+		pStages             = &shader_stages[0],
+		pVertexInputState   = &vertex_input_info,
+		pInputAssemblyState = &input_assembly,
+		pViewportState      = &viewport_state,
+		pRasterizationState = &rasterizer,
+		pMultisampleState   = &multsampling,
+		pColorBlendState    = &color_blending,
+		layout              = layout^,
+		renderPass          = renderpass,
+		subpass             = 0,
+	}
+
+
+	result := vk.CreateGraphicsPipelines(device, 0, 1, &pipeline_info, nil, gp)
+	if result != vk.Result.SUCCESS {
+		fmt.eprintfln("Failed to create graphics pipeline: %d", result)
+		return false
+	}
+	fmt.println("Created Graphics Pipeline")
+	return true
 }
 
 create_instance :: proc(vk_instance: ^vk.Instance) -> bool {
@@ -338,8 +482,14 @@ create_logical_device :: proc(
 
 	device_extensions := []cstring{vk.KHR_SWAPCHAIN_EXTENSION_NAME}
 
+	vulkan11_features := vk.PhysicalDeviceVulkan11Features {
+		sType                = .PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+		shaderDrawParameters = true,
+	}
+
 	create_info := vk.DeviceCreateInfo {
 		sType                   = .DEVICE_CREATE_INFO,
+		pNext                   = &vulkan11_features,
 		queueCreateInfoCount    = u32(len(queue_create_infos)),
 		pQueueCreateInfos       = raw_data(queue_create_infos),
 		pEnabledFeatures        = &device_feature,
@@ -753,6 +903,7 @@ record_command_buffer :: proc(
 	extent: vk.Extent2D,
 	renderpass: vk.RenderPass,
 	framebuffer: vk.Framebuffer,
+	graphics_pipeline: vk.Pipeline,
 ) {
 	begin_info := vk.CommandBufferBeginInfo {
 		sType = .COMMAND_BUFFER_BEGIN_INFO,
@@ -764,7 +915,7 @@ record_command_buffer :: proc(
 	}
 
 	clear_color := vk.ClearValue {
-		color = {float32 = {0.0, 0.0, 0.5, 1.0}},
+		color = {float32 = {0.0, 0.0, 0.0, 1.0}},
 	}
 
 	render_pass_info := vk.RenderPassBeginInfo {
@@ -777,6 +928,9 @@ record_command_buffer :: proc(
 	}
 	vk.CmdBeginRenderPass(command_buffer, &render_pass_info, .INLINE)
 	// draw stuff
+	vk.CmdBindPipeline(command_buffer, .GRAPHICS, graphics_pipeline)
+
+	vk.CmdDraw(command_buffer, 3, 1, 0, 0)
 
 	vk.CmdEndRenderPass(command_buffer)
 	if vk.EndCommandBuffer(command_buffer) != vk.Result.SUCCESS {
@@ -811,6 +965,7 @@ draw_frame :: proc(core: ^Vulkan_Core, rp: ^RenderPipeline, sc: ^Swap_Chain) {
 		sc.extent,
 		rp.render_pass,
 		rp.framebuffers[image_index],
+		rp.grahpics_pipeline,
 	)
 
 	wait_semaphores := [1]vk.Semaphore{rp.available_semaphores[rp.current_frame]}
@@ -863,6 +1018,7 @@ init_vulkan :: proc(g: ^App_State) -> bool {
 	if !create_swapchain(g.window, core.phyiscal_device, core.logical_device, g.surface, sc) do return false
 	if !create_image_views(core.logical_device, sc) do return false
 	if !create_render_pass(core.logical_device, sc.format, &rp.render_pass) do return false
+	if !create_graphics_pipeline(core.logical_device, sc.extent, rp.render_pass, &rp.layout, &rp.grahpics_pipeline) do return false
 	if !create_framebuffers(core.logical_device, rp.render_pass, sc.views, sc.extent, &rp.framebuffers) do return false
 	if !create_command_pool(g.surface, core.phyiscal_device, core.logical_device, &rp.command_pool) do return false
 	if !create_command_buffers(core.logical_device, rp.command_pool, rp.framebuffers, &rp.commandbuffers) do return false
@@ -886,6 +1042,10 @@ deinit_vulkan :: proc(g: ^App_State) {
 	}
 	vk.DestroyCommandPool(g.vk_core.logical_device, g.renderpipeline.command_pool, nil)
 	delete(g.renderpipeline.commandbuffers)
+
+	vk.DestroyPipeline(g.vk_core.logical_device, g.renderpipeline.grahpics_pipeline, nil)
+	vk.DestroyPipelineLayout(g.vk_core.logical_device, g.renderpipeline.layout, nil)
+
 	cleanup_swapchain(g.vk_core.logical_device, &g.swapchain, &g.renderpipeline)
 	vk.DestroyRenderPass(g.vk_core.logical_device, g.renderpipeline.render_pass, nil)
 	vk.DestroyDevice(g.vk_core.logical_device, nil)

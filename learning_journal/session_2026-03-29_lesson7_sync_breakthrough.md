@@ -368,6 +368,207 @@ The pattern became obvious: Need different semaphore counts for different owners
 
 ---
 
+## Follow-up: Defer Patterns & Cleanup Contracts
+
+### The Insight About Memory Safety in Odin
+
+During the debugging session, a critical realization emerged about how Odin handles memory safety differently from languages like Rust or Zig:
+
+**Odin has NO type-level guarantees for resource cleanup.**
+
+There's no borrow checker, no ownership system in the type system, no compile-time enforcement of cleanup contracts. This means:
+- You can allocate memory and forget to free it (memory leak)
+- You can free memory and continue using it (use-after-free)
+- The compiler won't stop you
+
+This is intentional. Odin trusts the programmer to understand the contract.
+
+### Defer Placement Patterns
+
+When working with Vulkan (and general Odin memory management), two defer patterns emerge:
+
+**Pattern 1: Immediate Defer (After Allocation)**
+```odin
+// This is the safe pattern - defer placed right after allocation
+data := make([]u8, 1024)
+defer delete(data)
+
+// ... use data ...
+// Compiler will guarantee defer runs at end of scope
+```
+
+**Why**: If an error occurs between allocation and defer, you leak. Placing defer immediately after allocation minimizes this window.
+
+**Pattern 2: Validation Defer (After Successful Validation)**
+```odin
+// Sometimes you need to validate before committing to cleanup
+buffer, ok := os.read_entire_file("important_file.bin")
+if !ok {
+    return  // Never allocated, no defer needed
+}
+defer delete(buffer)  // Now we know it succeeded
+
+// ... use buffer ...
+```
+
+**Why**: If allocation failed, there's nothing to clean up. Deferring only after validation avoids cleanup of non-existent resources.
+
+**For Vulkan specifically**:
+```odin
+// Create semaphore
+semaphore: vk.Semaphore
+result := vk.CreateSemaphore(device, &info, nil, &semaphore)
+if result != .SUCCESS {
+    return result  // Never created, don't defer
+}
+defer vk.DestroySemaphore(device, semaphore, nil)
+
+// Now it's safe to use semaphore
+// Defer will always run at end of scope, always destroying it
+```
+
+### Contract-Based Safety vs Type-Based Safety
+
+**Rust's approach (Type-Based)**:
+```rust
+{
+    let data = vec![1, 2, 3];  // Allocates
+    // data.drop() is GUARANTEED to run here
+    // Compiler enforces ownership - no way to leak
+}
+```
+
+The contract is enforced by the type system. You can't opt out.
+
+**Odin's approach (Contract-Based)**:
+```odin
+{
+    data := make([]int, 3)
+    defer delete(data)  // YOU promise this will run
+    // If you forget defer, compiler doesn't stop you
+    // But if you follow the pattern, it works correctly
+}
+```
+
+The contract is enforced by programmer discipline. You can break it if you're careless.
+
+**Key difference**: Odin's philosophy is:
+- Programmers understand memory
+- Trust them to follow patterns
+- Don't add language complexity for safety
+- Explicit contract is clearer than hidden compiler magic
+
+### Practical Approaches for Different Scenarios
+
+**Scenario 1: Simple allocation with guaranteed cleanup**
+```odin
+// File loading pattern
+data, ok := os.read_entire_file("model.obj")
+if !ok {
+    return false
+}
+defer delete(data)
+// ... process data ...
+// Guaranteed: delete(data) runs at end of scope
+```
+
+**Scenario 2: Array of resources (swapchain images)**
+```odin
+// Create multiple semaphores
+semaphores := make([]vk.Semaphore, count)
+defer delete(semaphores)  // Free the slice container
+
+// Create each semaphore
+for i in 0 ..< count {
+    result := vk.CreateSemaphore(device, &info, nil, &semaphores[i])
+    if result != .SUCCESS {
+        // Problem: we created semaphores[0..i-1] but will only defer delete(semaphores)
+        // This doesn't destroy the individual semaphores!
+        return result
+    }
+}
+```
+
+This is incomplete - you need explicit cleanup of the individual resources:
+```odin
+// Better: destroy individual semaphores first
+for i in 0 ..< len(semaphores) {
+    vk.DestroySemaphore(device, semaphores[i], nil)
+}
+defer delete(semaphores)  // Then free the slice
+```
+
+**Why**: In Vulkan, you must explicitly destroy each semaphore. `delete()` only frees the slice memory, not the Vulkan objects.
+
+**Scenario 3: Early return with partial allocation**
+```odin
+// Creating frame sync objects - multiple resources
+available_sems := make([]vk.Semaphore, count)
+defer delete(available_sems)
+
+// Create each one
+for i in 0 ..< count {
+    result := vk.CreateSemaphore(device, &info, nil, &available_sems[i])
+    if result != .SUCCESS {
+        // We allocated slice, created semaphores[0..i-1]
+        // On return, defer delete(available_sems) runs - but semaphores are still alive!
+        return result
+    }
+}
+
+// All created successfully - now safe to use
+```
+
+The pattern here assumes: either all succeed (use and eventually clean up), or you fail fast and accept leaked resources. This is acceptable for error paths if cleanup would be complex.
+
+**Better pattern for critical resources**:
+```odin
+create_semaphores :: proc(device: vk.Device, count: int, allocator := context.allocator) -> ([]vk.Semaphore, vk.Result) {
+    semaphores := make([]vk.Semaphore, count, allocator)
+
+    for i in 0 ..< count {
+        result := vk.CreateSemaphore(device, &info, nil, &semaphores[i])
+        if result != .SUCCESS {
+            // Cleanup: destroy what we created
+            for j in 0 ..< i {
+                vk.DestroySemaphore(device, semaphores[j], nil)
+            }
+            delete(semaphores)
+            return nil, result
+        }
+    }
+
+    return semaphores, .SUCCESS
+}
+```
+
+Caller then knows: if result is SUCCESS, semaphores are valid and must be cleaned up. If error, nothing is leaked.
+
+### Odin's Philosophy on Trust-Based Memory Management
+
+The lesson from this discussion:
+
+**Odin says: "You know what you're doing. We'll give you the tools, you maintain the contracts."**
+
+This means:
+1. **No hidden cleanup**: What you allocate, you delete. Nothing automatic.
+2. **Explicit patterns**: `defer` immediately after `make()` or immediately after successful validation.
+3. **Contract enforcement is social, not mechanical**: Rely on code review, testing, and personal discipline.
+4. **Simplicity over safety**: Language is simpler, faster, more transparent.
+5. **Systems programming mindset**: "I know what I'm allocating and when it should be freed."
+
+**Contrast with memory-safe languages**:
+- Rust: Compiler prevents you from breaking the contract
+- Odin: Compiler trusts you to follow the contract
+
+**Which is better?**
+- Rust: Safer for teams, prevents whole classes of bugs, more complex to learn
+- Odin: Faster iteration, lower cognitive load, requires discipline and skill
+
+As a Pipeline TD learning systems programming, understanding this philosophy is key. You're being trusted to understand memory ownership - which is exactly what VFX tools require.
+
+---
+
 ## Next Steps
 
 1. ✓ Lesson 7 (Synchronization) - Complete
