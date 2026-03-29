@@ -21,7 +21,7 @@
             vulkan-headers
             vulkan-loader
             vulkan-validation-layers
-            slang  # Slang shader compiler
+            shader-slang # Slang shader compiler
           ];
 
           shellHook = ''

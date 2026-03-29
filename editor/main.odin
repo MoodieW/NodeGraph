@@ -3,6 +3,7 @@ package main
 import "base:runtime"
 import "core:fmt"
 import la "core:math/linalg"
+import "core:os"
 import "vendor:glfw"
 import vk "vendor:vulkan"
 
@@ -36,13 +37,14 @@ Swap_Chain :: struct {
 }
 
 RenderPipeline :: struct {
-	render_pass:                vk.RenderPass,
-	framebuffers:               []vk.Framebuffer,
-	commandbuffers:             []vk.CommandBuffer,
-	command_pool:               vk.CommandPool,
-	image_available_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore,
-	image_finished_semaphores:  [MAX_FRAMES_IN_FLIGHT]vk.Semaphore,
-	in_flight_fences:           [MAX_FRAMES_IN_FLIGHT]vk.Fence,
+	render_pass:          vk.RenderPass,
+	framebuffers:         []vk.Framebuffer,
+	commandbuffers:       []vk.CommandBuffer,
+	command_pool:         vk.CommandPool,
+	available_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore,
+	finished_semaphores:  []vk.Semaphore,
+	in_flight_fences:     [MAX_FRAMES_IN_FLIGHT]vk.Fence,
+	current_frame:        int,
 }
 
 //debuf callback
@@ -58,6 +60,32 @@ debug_callback :: proc "system" (
 	return false
 }
 
+
+read_file :: proc(filepath: string) -> ([]byte, bool) {
+	data, ok := os.read_entire_file(filepath)
+	if !ok {
+		fmt.eprintfln("Failed to read file: %s", filepath)
+		return nil, false
+	}
+	return data, true
+}
+
+
+create_shader_module :: proc(device: vk.Device, code: []byte) -> (vk.ShaderModule, bool) {
+	create_info := vk.ShaderModuleCreateInfo {
+		sType    = .SHADER_MODULE_CREATE_INFO,
+		codeSize = len(code),
+		pCode    = cast(^u32)raw_data(code),
+	}
+	shader_module: vk.ShaderModule
+	result := vk.CreateShaderModule(device, &create_info, nil, &shader_module)
+	if result != vk.Result.SUCCESS {
+		fmt.eprintfln("Failed to create Shader Module: %d", result)
+		return 0, false
+	}
+
+	return shader_module, true
+}
 
 create_instance :: proc(vk_instance: ^vk.Instance) -> bool {
 	//Application info
@@ -525,6 +553,7 @@ create_swapchain :: proc(
 	fmt.printfln("Format: %v", surface_format.format)
 	fmt.printfln("Extent: %dx%d", extent.width, extent.height)
 	fmt.printfln("Present Mode: %v", present_mode)
+	fmt.printfln("DEBUG: swapchain.images len = %d", len(swapchain.images))
 	return true
 }
 
@@ -684,9 +713,11 @@ create_command_buffers :: proc(
 create_sync_object :: proc(
 	device: vk.Device,
 	available_semphore: ^[MAX_FRAMES_IN_FLIGHT]vk.Semaphore,
-	fin_semaphore: ^[MAX_FRAMES_IN_FLIGHT]vk.Semaphore,
+	fin_semaphore: ^[]vk.Semaphore,
 	fences: ^[MAX_FRAMES_IN_FLIGHT]vk.Fence,
+	image_count: int,
 ) -> bool {
+	fin_semaphore^ = make([]vk.Semaphore, image_count)
 	semaphore_info := vk.SemaphoreCreateInfo {
 		sType = .SEMAPHORE_CREATE_INFO,
 	}
@@ -694,18 +725,19 @@ create_sync_object :: proc(
 		sType = .FENCE_CREATE_INFO,
 		flags = {.SIGNALED},
 	}
+	for i in 0 ..< image_count {
+		result := vk.CreateSemaphore(device, &semaphore_info, nil, &fin_semaphore[i])
+		if result != vk.Result.SUCCESS {
+			fmt.eprintfln("Failed to create semaphore: %d", result)
+			return false
+		}
+	}
 	for i in 0 ..< MAX_FRAMES_IN_FLIGHT {
 		result := vk.CreateSemaphore(device, &semaphore_info, nil, &available_semphore[i])
 		if result != vk.Result.SUCCESS {
 			fmt.eprintfln("Failed to create semaphore: %d", result)
 			return false
 		}
-		result = vk.CreateSemaphore(device, &semaphore_info, nil, &fin_semaphore[i])
-		if result != vk.Result.SUCCESS {
-			fmt.eprintfln("Failed to create semaphore: %d", result)
-			return false
-		}
-
 		result = vk.CreateFence(device, &fence_info, nil, &fences[i])
 		if result != vk.Result.SUCCESS {
 			fmt.eprintfln("Failed to create Fence: %d", result)
@@ -716,42 +748,138 @@ create_sync_object :: proc(
 	return true
 }
 
-init_vulkan :: proc(g: ^App_State) -> bool {
-	if !create_instance(&g.vk_core.instance) do return false
-	if !create_debug_messenger(g.vk_core.instance, &g.debug_messenger) do return false
-	if !create_surface(g.window, g.vk_core.instance, &g.surface) do return false
-	if !pick_physical_device(g.vk_core.instance, g.surface, &g.vk_core.phyiscal_device) do return false
-	if !create_logical_device(
-		g.vk_core.phyiscal_device,
-		&g.vk_core.logical_device,
-		&g.vk_core.graphics_queue,
-		&g.vk_core.present_queue,
-		g.surface,
-	) {
-		return false
+record_command_buffer :: proc(
+	command_buffer: vk.CommandBuffer,
+	extent: vk.Extent2D,
+	renderpass: vk.RenderPass,
+	framebuffer: vk.Framebuffer,
+) {
+	begin_info := vk.CommandBufferBeginInfo {
+		sType = .COMMAND_BUFFER_BEGIN_INFO,
 	}
-	if !create_swapchain(g.window, g.vk_core.phyiscal_device, g.vk_core.logical_device, g.surface, &g.swapchain) do return false
-	if !create_image_views(g.vk_core.logical_device, &g.swapchain) do return false
-	if !create_render_pass(g.vk_core.logical_device, g.swapchain.format, &g.renderpipeline.render_pass) do return false
-	if !create_framebuffers(g.vk_core.logical_device, g.renderpipeline.render_pass, g.swapchain.views, g.swapchain.extent, &g.renderpipeline.framebuffers) do return false
-	if !create_command_pool(g.surface, g.vk_core.phyiscal_device, g.vk_core.logical_device, &g.renderpipeline.command_pool) do return false
-	if !create_command_buffers(g.vk_core.logical_device, g.renderpipeline.command_pool, g.renderpipeline.framebuffers, &g.renderpipeline.commandbuffers) do return false
-	if !create_sync_object(g.vk_core.logical_device, &g.renderpipeline.image_available_semaphores, &g.renderpipeline.image_finished_semaphores, &g.renderpipeline.in_flight_fences) do return false
+
+	if vk.BeginCommandBuffer(command_buffer, &begin_info) != vk.Result.SUCCESS {
+		fmt.eprintfln("Failed to  Begin Command Buffer: %d")
+		return
+	}
+
+	clear_color := vk.ClearValue {
+		color = {float32 = {0.0, 0.0, 0.5, 1.0}},
+	}
+
+	render_pass_info := vk.RenderPassBeginInfo {
+		sType = .RENDER_PASS_BEGIN_INFO,
+		renderPass = renderpass,
+		framebuffer = framebuffer,
+		renderArea = {offset = {0, 0}, extent = extent},
+		clearValueCount = 1,
+		pClearValues = &clear_color,
+	}
+	vk.CmdBeginRenderPass(command_buffer, &render_pass_info, .INLINE)
+	// draw stuff
+
+	vk.CmdEndRenderPass(command_buffer)
+	if vk.EndCommandBuffer(command_buffer) != vk.Result.SUCCESS {
+		fmt.eprintfln("Failed to end command buffer")
+	}
+
+}
+
+
+draw_frame :: proc(core: ^Vulkan_Core, rp: ^RenderPipeline, sc: ^Swap_Chain) {
+	vk.WaitForFences(
+		core.logical_device,
+		1,
+		&rp.in_flight_fences[rp.current_frame],
+		true,
+		max(u64),
+	)
+	vk.ResetFences(core.logical_device, 1, &rp.in_flight_fences[rp.current_frame])
+
+	image_index: u32
+	vk.AcquireNextImageKHR(
+		core.logical_device,
+		sc.swapchain,
+		max(u64),
+		rp.available_semaphores[rp.current_frame],
+		0,
+		&image_index,
+	)
+	vk.ResetCommandBuffer(rp.commandbuffers[image_index], {})
+	record_command_buffer(
+		rp.commandbuffers[image_index],
+		sc.extent,
+		rp.render_pass,
+		rp.framebuffers[image_index],
+	)
+
+	wait_semaphores := [1]vk.Semaphore{rp.available_semaphores[rp.current_frame]}
+	wait_stages := [1]vk.PipelineStageFlags{{.COLOR_ATTACHMENT_OUTPUT}}
+	signal_semphores := [1]vk.Semaphore{rp.finished_semaphores[image_index]}
+	submit_info := vk.SubmitInfo {
+		sType                = .SUBMIT_INFO,
+		waitSemaphoreCount   = 1,
+		pWaitSemaphores      = &wait_semaphores[0],
+		pWaitDstStageMask    = &wait_stages[0],
+		commandBufferCount   = 1,
+		pCommandBuffers      = &rp.commandbuffers[image_index],
+		signalSemaphoreCount = 1,
+		pSignalSemaphores    = &signal_semphores[0],
+	}
+	if vk.QueueSubmit(
+		   core.graphics_queue,
+		   1,
+		   &submit_info,
+		   rp.in_flight_fences[rp.current_frame],
+	   ) !=
+	   vk.Result.SUCCESS {
+		fmt.eprintln("Failed to submit to queue")
+	}
+
+	swaphains := [1]vk.SwapchainKHR{sc.swapchain}
+	present_info := vk.PresentInfoKHR {
+		sType              = .PRESENT_INFO_KHR,
+		waitSemaphoreCount = 1,
+		pWaitSemaphores    = &signal_semphores[0],
+		swapchainCount     = 1,
+		pSwapchains        = &swaphains[0],
+		pImageIndices      = &image_index,
+	}
+
+	vk.QueuePresentKHR(core.present_queue, &present_info)
+	rp.current_frame = (rp.current_frame + 1) % MAX_FRAMES_IN_FLIGHT
+}
+
+init_vulkan :: proc(g: ^App_State) -> bool {
+	rp := &g.renderpipeline
+	sc := &g.swapchain
+	core := &g.vk_core
+
+	if !create_instance(&core.instance) do return false
+	if !create_debug_messenger(core.instance, &g.debug_messenger) do return false
+	if !create_surface(g.window, core.instance, &g.surface) do return false
+	if !pick_physical_device(core.instance, g.surface, &core.phyiscal_device) do return false
+	if !create_logical_device(core.phyiscal_device, &core.logical_device, &core.graphics_queue, &core.present_queue, g.surface) do return false
+	if !create_swapchain(g.window, core.phyiscal_device, core.logical_device, g.surface, sc) do return false
+	if !create_image_views(core.logical_device, sc) do return false
+	if !create_render_pass(core.logical_device, sc.format, &rp.render_pass) do return false
+	if !create_framebuffers(core.logical_device, rp.render_pass, sc.views, sc.extent, &rp.framebuffers) do return false
+	if !create_command_pool(g.surface, core.phyiscal_device, core.logical_device, &rp.command_pool) do return false
+	if !create_command_buffers(core.logical_device, rp.command_pool, rp.framebuffers, &rp.commandbuffers) do return false
+	if !create_sync_object(core.logical_device, &rp.available_semaphores, &rp.finished_semaphores, &rp.in_flight_fences, len(sc.images)) do return false
 	return true
 
 }
 
 
 deinit_vulkan :: proc(g: ^App_State) {
+	for i in 0 ..< len(g.swapchain.images) {
+		vk.DestroySemaphore(g.vk_core.logical_device, g.renderpipeline.finished_semaphores[i], nil)
+	}
 	for i in 0 ..< MAX_FRAMES_IN_FLIGHT {
 		vk.DestroySemaphore(
 			g.vk_core.logical_device,
-			g.renderpipeline.image_available_semaphores[i],
-			nil,
-		)
-		vk.DestroySemaphore(
-			g.vk_core.logical_device,
-			g.renderpipeline.image_finished_semaphores[i],
+			g.renderpipeline.available_semaphores[i],
 			nil,
 		)
 		vk.DestroyFence(g.vk_core.logical_device, g.renderpipeline.in_flight_fences[i], nil)
@@ -791,6 +919,8 @@ main :: proc() {
 	for !glfw.WindowShouldClose(app_state.window) {
 		free_all(context.temp_allocator)
 		glfw.PollEvents()
+		draw_frame(&app_state.vk_core, &app_state.renderpipeline, &app_state.swapchain)
 	}
+	vk.DeviceWaitIdle(app_state.vk_core.logical_device)
 }
 
