@@ -1,8 +1,8 @@
 # Future Direction: Shader Graph System
 
-**Status**: Vision document - implementation begins after Lesson 9 completion
+**Status**: Ready to begin - Vulkan foundation complete (Phase 0-2)
 
-**Last Updated**: 2026-03-25
+**Last Updated**: 2026-03-29
 
 ---
 
@@ -179,18 +179,22 @@ float4 fragmentMain(float2 uv : TEXCOORD) : SV_Target
 
 ## Implementation Phases
 
-### Phase 0: Foundation (Lessons 1-9) [IN PROGRESS]
+### Phase 0-2: Foundation (Vulkan Lessons 0-9) ✅ COMPLETE
 
 **Goal**: Complete Vulkan rendering pipeline
 
-- ✅ Lessons 1-6: Instance, device, swapchain, render pass, command buffers
-- ⏸️ Lesson 7: Synchronization (fences, semaphores)
-- ⏸️ Lesson 8: Clear screen (first render loop)
-- ⏸️ Lesson 9: Triangle (first vertex/fragment shader)
+- ✅ Phase 0: Vulkan Mental Model ([lesson_00](vulkan_lessons/lesson_00_mental_model.md))
+- ✅ Phase 1: Bootstrap - Lessons 1-7 ([main plan](NodeGraph_plan.md#phase-1-vulkan-bootstrap-the-gauntlet-))
+  - Instance, debug messenger, surface, physical device, logical device, queues
+  - Swapchain, image views, render pass, framebuffers
+  - Command pools/buffers, synchronization (fences, semaphores)
+- ✅ Phase 2: First Triangle - Lessons 8-9 ([lesson_08](vulkan_lessons/lesson_08_clear_screen.md), [lesson_09](vulkan_lessons/lesson_09_triangle.md))
+  - Clear screen (render loop)
+  - Graphics pipeline + triangle rendering
 
-**Milestone**: Render a hardcoded triangle with Slang shader.
+**Milestone**: ✅ RGB triangle rendering with Slang shaders (COMPLETE 2026-03-29)
 
-### Phase 1: Shader Hot-Reload [AFTER LESSON 9]
+### Phase 3: Shader Hot-Reload [NEXT]
 
 **Goal**: Load external Slang files at runtime
 
@@ -204,7 +208,9 @@ float4 fragmentMain(float2 uv : TEXCOORD) : SV_Target
 
 **Why first**: Proves you can compile and load Slang dynamically. Foundation for graph codegen.
 
-### Phase 2: Minimal Node Graph [PROTOTYPE]
+**See**: [Phase 3 in main plan](NodeGraph_plan.md#phase-3-shader-hot-reload)
+
+### Phase 4: Minimal Node Graph [PROTOTYPE]
 
 **Goal**: 2-3 hardcoded nodes, generate Slang
 
@@ -222,7 +228,9 @@ float4 fragmentMain(float2 uv : TEXCOORD) : SV_Target
 
 **Skip for now**: UI, saving/loading, parameters. Prove the core idea first.
 
-### Phase 3: Node Library + Parameters [ITERATION]
+**See**: [Phase 4 in main plan](NodeGraph_plan.md#phase-4-minimal-shader-graph)
+
+### Phase 5: Node Library + Parameters [ITERATION]
 
 **Goal**: 10-15 useful nodes, exposed parameters
 
@@ -240,7 +248,9 @@ float4 fragmentMain(float2 uv : TEXCOORD) : SV_Target
 
 **Milestone**: Create a rust metal shader from nodes (noise + color ramp + roughness).
 
-### Phase 4: Visual Editor UI [POLISH]
+**See**: [Phase 5 in main plan](NodeGraph_plan.md#phase-5-node-library--parameters)
+
+### Phase 6: Visual Editor UI [POLISH]
 
 **Goal**: Full node editor with Houdini-like UX
 
@@ -255,7 +265,9 @@ float4 fragmentMain(float2 uv : TEXCOORD) : SV_Target
 
 **Milestone**: Build a complex shader (layered noise, multiple blends) entirely in UI.
 
-### Phase 5: Advanced Features [STRETCH GOALS]
+**See**: [Phase 6 in main plan](NodeGraph_plan.md#phase-6-visual-editor-ui)
+
+### Phase 7: Advanced Features [STRETCH GOALS]
 
 **Nice-to-haves (future):**
 - **Subgraphs**: Collapse nodes into reusable blocks
@@ -279,7 +291,7 @@ float4 fragmentMain(float2 uv : TEXCOORD) : SV_Target
 3. **LOD thumbnails**: Low-res (64x64) previews for off-screen nodes
 4. **Batch rendering**: Single compute shader evaluates multiple nodes
 
-**Defer until Phase 4**. Get basic graph working first.
+**Defer until Phase 6**. Get basic graph working first.
 
 ### Challenge 2: Type System
 
@@ -290,7 +302,7 @@ float4 fragmentMain(float2 uv : TEXCOORD) : SV_Target
 2. **Auto-casting**: vec3 → float (take .x), float → vec3 (replicate)
 3. **Explicit cast nodes**: Force user to insert "float to vec3" node
 
-**Decision**: Start strict (Phase 2), add auto-casting later (Phase 3).
+**Decision**: Start strict (Phase 4), add auto-casting later (Phase 5).
 
 ### Challenge 3: Circular Dependencies
 
@@ -311,7 +323,7 @@ float4 fragmentMain(float2 uv : TEXCOORD) : SV_Target
 2. **Uniform buffers**: Larger parameter sets in UBO (no recompile)
 3. **Shader variants**: Pre-compile common variations
 
-**Decision**: Use push constants for parameters (Phase 3). Only regenerate for topology changes.
+**Decision**: Use push constants for parameters (Phase 5). Only regenerate for topology changes.
 
 ---
 
@@ -370,25 +382,27 @@ float4 fragmentMain(float2 uv : TEXCOORD) : SV_Target
 
 ## Success Metrics
 
-**Phase 2 success**: Generate and render 3-node graph
-**Phase 3 success**: Create rust metal material from 8+ nodes
-**Phase 4 success**: Build complex shader (10+ nodes) without writing code
-**Phase 5 success**: Ship a tool that artists would actually use
+**Phase 3 success**: Shader hot-reload working (edit + save = instant update)
+**Phase 4 success**: Generate and render 3-node graph
+**Phase 5 success**: Create rust metal material from 8+ nodes
+**Phase 6 success**: Build complex shader (10+ nodes) without writing code
+**Phase 7 success**: Ship a tool that artists would actually use
 
 ---
 
-## When to Start
+## Current Status & Timeline
 
-**Not now.** Finish Vulkan bootstrap first (Lessons 7-9).
+**✅ Ready to start!** Vulkan foundation complete (Phases 0-2, Lessons 0-9).
 
-**Timeline estimate:**
-- Lessons 7-9: ~3-5 sessions
-- Phase 1 (hot-reload): ~2-3 sessions
-- Phase 2 (minimal graph): ~5-7 sessions
-- Phase 3 (node library): ~10-15 sessions
-- Phase 4 (full UI): ~20-30 sessions
+**Timeline estimate from current point:**
+- Phase 3 (hot-reload): ~2-3 sessions
+- Phase 4 (minimal graph): ~5-7 sessions
+- Phase 5 (node library): ~10-15 sessions
+- Phase 6 (full UI): ~20-30 sessions
+- Phase 7 (advanced features): ~10-20 sessions (optional)
 
-**Realistic target**: Minimal working prototype (Phase 2) by ~15-20 total sessions from now.
+**Realistic target**: Minimal working prototype (Phase 4) by ~10 sessions from now.
+**Full visual editor**: (Phase 6) by ~40-55 sessions from now.
 
 ---
 
@@ -428,6 +442,8 @@ float4 fragmentMain(float2 uv : TEXCOORD) : SV_Target
 
 ---
 
-**Status**: Vision captured. Implementation begins after Lesson 9 completion.
+**Status**: ✅ Foundation complete. Ready to begin Phase 3 (shader hot-reload).
 
-**Next milestone**: Complete Lessons 7-9, then revisit this document.
+**Next milestone**: Implement file watcher + dynamic Slang compilation.
+
+**See main plan**: [NodeGraph_plan.md](NodeGraph_plan.md) for detailed phase breakdowns.
