@@ -3,7 +3,6 @@ package watcher
 
 import "core:fmt"
 import "core:os"
-import "core:path/filepath"
 import "core:strings"
 import "core:sys/linux"
 
@@ -15,8 +14,8 @@ Watcher :: struct {
 
 
 _linux_create :: proc() -> (Watcher, bool) {
-	fd, err := linux.inotify_init()
-	if err != os.ERROR_NONE {
+	fd, err := linux.inotify_init1({.NONBLOCK})
+	if err != .NONE {
 		fmt.eprintfln("Could not build Notify: %d", err)
 		return {}, false
 	}
@@ -42,7 +41,7 @@ _linux_add_watch :: proc(path: string, w: ^Watcher) -> bool {
 		return false
 	}
 	w.watch_descriptor[wd] = strings.clone(path)
-	return false
+	return true
 }
 
 
@@ -62,7 +61,7 @@ _linux_remove_watch :: proc(path: string, w: ^Watcher) -> bool {
 		return false
 	}
 	result := linux.inotify_rm_watch(w.fd, wd_to_remove)
-	if result != os.ERROR_NONE {
+	if result != .NONE {
 		fmt.eprintfln("Failed to remove wach for: %s", path)
 		return false
 	}
@@ -74,10 +73,46 @@ _linux_remove_watch :: proc(path: string, w: ^Watcher) -> bool {
 _linux_destroy_watch :: proc(w: ^Watcher) {
 	for wd, path in w.watch_descriptor {
 		delete(path)
-		delete_key(&w.watch_descriptor, wd)
 	}
 	delete(w.watch_descriptor)
 	linux.close(w.fd)
 
+}
+
+_linux_poll_events :: proc(w: ^Watcher) {
+	n, err := linux.read(w.fd, w.buffer[:])
+	if err == .EAGAIN do return
+	if err != .NONE {
+		fmt.eprintfln("Failed to read events: %d", err)
+		return
+	}
+	offset := 0
+	for offset < n {
+		event := (^linux.Inotify_Event)(raw_data(w.buffer[offset:]))
+		event_size := size_of(linux.Inotify_Event) + int(event.len)
+
+		if linux.Inotify_Event_Bits.IGNORED in event.mask {
+			if path, ok := w.watch_descriptor[event.wd]; ok {
+				delete(path)
+				delete_key(&w.watch_descriptor, event.wd)
+			}
+			offset += event_size
+			continue
+		}
+
+		name := ""
+		if event.len > 0 {
+			name_bytes := w.buffer[offset + size_of(linux.Inotify_Event):][:event.len]
+			name = strings.clone_from_cstring(
+				cstring(raw_data(name_bytes)),
+				context.temp_allocator,
+			)
+		}
+		if path, ok := w.watch_descriptor[event.wd]; ok {
+			fmt.printfln("%s/%s mask=%v\n", path, name, event.mask)
+		}
+		offset += size_of(linux.Inotify_Event) + int(event.len)
+	}
+	free_all(context.temp_allocator)
 }
 
