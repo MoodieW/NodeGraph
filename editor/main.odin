@@ -111,7 +111,7 @@ create_graphics_pipeline :: proc(
 	defer vk.DestroyShaderModule(device, vert_module, nil)
 
 	frag_module, frag_mod_ok := create_shader_module(device, frag_code)
-	if !vert_mod_ok do return false
+	if !frag_mod_ok do return false
 	defer vk.DestroyShaderModule(device, frag_module, nil)
 
 	vert_stage := vk.PipelineShaderStageCreateInfo {
