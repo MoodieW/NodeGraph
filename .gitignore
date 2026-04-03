@@ -1,0 +1,28 @@
+# Executables
+vfx_tools
+3d_editor
+*.bin
+*.exe
+
+# Learning plans
+learning_plan/
+
+# Compiled shaders
+*.spv
+
+# Odin build artifacts
+*.o
+*.obj
+*.lib
+*.a
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
