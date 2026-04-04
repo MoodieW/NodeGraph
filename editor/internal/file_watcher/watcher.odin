@@ -29,6 +29,10 @@ destroy_watch :: proc(w: ^Watcher) {
 	when ODIN_OS == .Linux do _linux_destroy_watch(w)
 }
 
+remove_watch :: proc(path: string, w: ^Watcher) -> bool {
+	when ODIN_OS == .Linux do return _linux_remove_watch(path, w)
+}
+
 poll_events :: proc(
 	w: ^Watcher,
 	allactor := context.temp_allocator,
