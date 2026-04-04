@@ -87,13 +87,22 @@ _linux_destroy_watch :: proc(w: ^Watcher) {
 
 }
 
-_linux_poll_events :: proc(w: ^Watcher) {
+_linux_poll_events :: proc(
+	w: ^Watcher,
+	allocator := context.temp_allocator,
+) -> (
+	[dynamic]File_Event,
+	bool,
+) {
+	file_events := make([dynamic]File_Event, allocator)
 	n, err := linux.read(w.fd, w.buffer[:])
-	if err == .EAGAIN do return
+	if err == .EAGAIN do return file_events, false
 	if err != .NONE {
 		fmt.eprintfln("Failed to read Events: %v", err)
+		return file_events, false
 	}
 	offset := 0
+	// get the event log
 	for offset < n {
 		event := (^linux.Inotify_Event)(raw_data(w.buffer[offset:]))
 		event_size := size_of(linux.Inotify_Event) + int(event.len)
@@ -110,32 +119,25 @@ _linux_poll_events :: proc(w: ^Watcher) {
 		name := ""
 		if event.len > 0 {
 			name_bytes := w.buffer[offset + size_of(linux.Inotify_Event):][:event.len]
-			name = strings.clone_from_cstring(
-				cstring(raw_data(name_bytes)),
-				context.temp_allocator,
-			)
+			name = strings.clone_from_cstring(cstring(raw_data(name_bytes)), allocator)
 		}
+		// read each item
 		if path, ok := w.watch_descriptor[event.wd]; ok {
-			// do stuff with this file
+			event_type: File_Event_Type
+			if .CREATE in event.mask {
+				event_type = .Created
+			}
+			if .DELETE in event.mask {
+				event_type = .Deleted
+			}
+			if .MODIFY in event.mask || .CLOSE_WRITE in event.mask {
+				event_type = .Modified
+			}
+			append(&file_events, File_Event{path, event_type})
 			fmt.printfln("%s/%s mask=%v\n", path, name, event.mask)
 		}
 		offset += event_size
 	}
-	free_all(context.temp_allocator)
-}
-
-
-main :: proc() {
-	w, ok := _linux_create()
-	if !ok {
-		fmt.eprintfln("Could not create watcher")
-	}
-	defer _linux_destroy_watch(&w)
-	test_path := filepath.join({#file, ".."})
-	fmt.printfln("%s", test_path)
-	_linux_add_watch(test_path, &w)
-	for {
-		_linux_poll_events(&w)
-	}
+	return file_events, true
 }
 
