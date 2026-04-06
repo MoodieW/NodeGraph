@@ -103,11 +103,11 @@ create_graphics_pipeline :: proc(
 	gp: ^vk.Pipeline,
 ) -> bool {
 	// read Shader code
-	vert_code, vert_ok := read_file("./shaders/triangle.vert.spv")
+	vert_code, vert_ok := read_file("./assets/shaders/triangle.vert.spv")
 	if !vert_ok do return false
 	defer delete(vert_code)
 
-	frag_code, frag_ok := read_file("./shaders/triangle.frag.spv")
+	frag_code, frag_ok := read_file("./assets/shaders/triangle.frag.spv")
 	if !frag_ok do return false
 	defer delete(frag_code)
 
@@ -1088,7 +1088,7 @@ main :: proc() {
 	}
 	defer watcher.destroy_watch(&app_state.file_watcher)
 	app_state.file_watcher = shader_watcher
-	if !watcher.add_watch("./shaders", &app_state.file_watcher) {
+	if !watcher.add_watch("./assets/shaders", &app_state.file_watcher) {
 		fmt.eprintfln("Could not add shader module to watch")
 		return
 	}
