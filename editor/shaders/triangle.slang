@@ -1,6 +1,6 @@
 [shader("vertex")]
 float4 vertexMain(uint vertexID: SV_VertexID, out float3 fragColor: COLOR) : SV_Position {
-
+// testtet
   static const float2 positions[3] = {
     float2(0.0, -0.5),
     float2(0.5, 0.5),
@@ -22,3 +22,5 @@ float4 vertexMain(uint vertexID: SV_VertexID, out float3 fragColor: COLOR) : SV_
 float4 fragmentMain(float3 fragColor: COLOR) : SV_Target {
   return float4(fragColor, 1.0);
 }
+//
+//

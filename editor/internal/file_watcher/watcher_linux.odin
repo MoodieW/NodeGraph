@@ -101,6 +101,9 @@ _linux_poll_events :: proc(
 		fmt.eprintfln("Failed to read Events: %v", err)
 		return file_events, false
 	}
+	// last event wins
+	event_map := make(map[string]File_Event)
+	defer delete(event_map)
 	offset := 0
 	// get the event log
 	for offset < n {
@@ -124,20 +127,37 @@ _linux_poll_events :: proc(
 		// read each item
 		if path, ok := w.watch_descriptor[event.wd]; ok {
 			event_type: File_Event_Type
-			if .CREATE in event.mask {
-				event_type = .Created
-			}
-			if .DELETE in event.mask {
-				event_type = .Deleted
-			}
-			if .MODIFY in event.mask || .CLOSE_WRITE in event.mask {
+			// setup defer so every loop iter we make sure to set offset
+			defer offset += event_size
+			if .CLOSE_WRITE in event.mask {
 				event_type = .Modified
+			} else if .DELETE in event.mask {
+				event_type = .Deleted
+			} else if .CREATE in event.mask {
+				event_type = .Created
+			} else {
+				continue
 			}
-			append(&file_events, File_Event{path, event_type})
-			fmt.printfln("%s/%s mask=%v\n", path, name, event.mask)
+			rel_path := filepath.join({path, name})
+			if !os.exists(rel_path) {
+				continue
+			}
+			abs_path, file_err := filepath.abs(rel_path)
+			if !file_err {
+				fmt.eprintln("Failed to get abs path")
+				fmt.eprintln(abs_path)
+				return file_events, false
+			}
+			event_map[abs_path] = File_Event{abs_path, event_type}
 		}
 		offset += event_size
+
+
 	}
+	for abspath in event_map {
+		append(&file_events, event_map[abspath])
+	}
+
 	return file_events, true
 }
 

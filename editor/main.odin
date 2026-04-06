@@ -4,20 +4,26 @@ import "base:runtime"
 import "core:fmt"
 import la "core:math/linalg"
 import "core:os"
+import "core:time"
 import "vendor:glfw"
 import vk "vendor:vulkan"
 
+import watcher "internal/file_watcher"
 // Global state (Vulkan apps needs some globals)
 //
 MAX_FRAMES_IN_FLIGHT :: 2
 
 App_State :: struct {
-	window:          glfw.WindowHandle,
-	vk_core:         Vulkan_Core,
-	swapchain:       Swap_Chain,
-	renderpipeline:  RenderPipeline,
-	debug_messenger: vk.DebugUtilsMessengerEXT,
-	surface:         vk.SurfaceKHR,
+	window:           glfw.WindowHandle,
+	vk_core:          Vulkan_Core,
+	swapchain:        Swap_Chain,
+	renderpipeline:   RenderPipeline,
+	debug_messenger:  vk.DebugUtilsMessengerEXT,
+	surface:          vk.SurfaceKHR,
+
+	//
+	file_watcher:     watcher.Watcher,
+	shader_poll_time: time.Time,
 }
 
 Vulkan_Core :: struct {
@@ -1075,10 +1081,33 @@ main :: proc() {
 		return
 	}
 	defer deinit_vulkan(&app_state)
-
+	shader_watcher, ok := watcher.create()
+	if !ok {
+		fmt.eprintfln("Could not create watch")
+		return
+	}
+	defer watcher.destroy_watch(&app_state.file_watcher)
+	app_state.file_watcher = shader_watcher
+	if !watcher.add_watch("./shaders", &app_state.file_watcher) {
+		fmt.eprintfln("Could not add shader module to watch")
+		return
+	}
+	app_state.shader_poll_time = time.now()
 	for !glfw.WindowShouldClose(app_state.window) {
 		free_all(context.temp_allocator)
 		glfw.PollEvents()
+
+		now := time.now()
+		if time.diff(app_state.shader_poll_time, now) > 500 * time.Millisecond {
+			app_state.shader_poll_time = now
+			events, event_ok := watcher.poll_events(
+				&app_state.file_watcher,
+				context.temp_allocator,
+			)
+			for event in events {
+				fmt.printfln("%v", event)
+			}
+		}
 		draw_frame(&app_state.vk_core, &app_state.renderpipeline, &app_state.swapchain)
 	}
 	vk.DeviceWaitIdle(app_state.vk_core.logical_device)

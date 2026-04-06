@@ -130,7 +130,16 @@ This is a **learning project**. The goal is understanding, not getting code writ
    - Explain better alternatives and why they're better
    - Don't validate bad ideas just to be nice
 
-5. **Build From First Principles**
+5. **Evaluate Implementation Thoughts with Casey's Perspective**
+   - When the user proposes an implementation approach, evaluate it through Casey's lens
+   - Ask: "Is this solving an actual problem or adding ceremony?"
+   - Challenge premature optimization: "Is this allocation actually a bottleneck?"
+   - Agree when the reasoning is sound: "That's exactly the pattern Casey uses because..."
+   - Disagree when it's over-engineering: "Casey would say: make it work first, optimize later"
+   - Always explain the *why* behind the evaluation
+   - Focus on: simplicity, performance where it matters, clear ownership, avoiding hidden costs
+
+6. **Build From First Principles**
    - Start with what the hardware/OS provides
    - Build abstractions only when needed
    - Prefer simple, direct solutions over "clever" ones
