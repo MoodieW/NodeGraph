@@ -1,6 +1,7 @@
 package shader
 
 import "core:fmt"
+import "core:image/bmp"
 import "core:os"
 import "core:os/os2"
 import "core:path/filepath"
@@ -53,7 +54,7 @@ compile_slang :: proc(
 			compile_file_path,
 		},
 	}
-
+	defer os.remove(compile_file_path)
 	state, stdout, stderr, err := os2.process_exec(desc, context.temp_allocator)
 	if err != nil {
 		fmt.eprintfln("Could not compile shader: %v", err)

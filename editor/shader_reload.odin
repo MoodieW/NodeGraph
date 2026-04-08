@@ -3,6 +3,7 @@ package main
 import "./internal/shader"
 import "core:fmt"
 import vk "vendor:vulkan"
+import renderer "vulkan"
 
 
 handle_shader_reload :: proc(
@@ -24,6 +25,6 @@ handle_shader_reload :: proc(
 	vk.DeviceWaitIdle(device)
 	vk.DestroyPipeline(device, gp^, nil)
 	vk.DestroyPipelineLayout(device, layout^, nil)
-	return _create_graphics_pipeline(fragment_spriv, vertex_spriv, device, extent, rp, layout, gp)
+	return renderer._create_graphics_pipeline(fragment_spriv, vertex_spriv, device, extent, rp, layout, gp)
 }
 
