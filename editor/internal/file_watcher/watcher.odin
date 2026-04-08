@@ -35,12 +35,13 @@ remove_watch :: proc(path: string, w: ^Watcher) -> bool {
 
 poll_events :: proc(
 	w: ^Watcher,
+	file_filter: Maybe(string) = nil,
 	allactor := context.temp_allocator,
 ) -> (
 	[dynamic]File_Event,
 	bool,
 ) {
-	when ODIN_OS == .Linux do return _linux_poll_events(w, allactor)
+	when ODIN_OS == .Linux do return _linux_poll_events(w, file_filter, allactor)
 }
 
 

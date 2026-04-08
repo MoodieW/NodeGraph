@@ -111,6 +111,19 @@ create_graphics_pipeline :: proc(
 	if !frag_ok do return false
 	defer delete(frag_code)
 
+	return _create_graphics_pipeline(frag_code, vert_code, device, extent, renderpass, layout, gp)
+}
+
+_create_graphics_pipeline :: proc(
+	frag_code: []byte,
+	vert_code: []byte,
+	device: vk.Device,
+	extent: vk.Extent2D,
+	renderpass: vk.RenderPass,
+	layout: ^vk.PipelineLayout,
+	gp: ^vk.Pipeline,
+) -> bool {
+
 	// create shader modules
 	vert_module, vert_mod_ok := create_shader_module(device, vert_code)
 	if !vert_mod_ok do return false
@@ -1102,10 +1115,22 @@ main :: proc() {
 			app_state.shader_poll_time = now
 			events, event_ok := watcher.poll_events(
 				&app_state.file_watcher,
+				".slang",
 				context.temp_allocator,
 			)
 			for event in events {
-				fmt.printfln("%v", event)
+				fmt.println(event)
+				if event.type == .Modified {
+					fmt.println("reloading shader")
+					handle_shader_reload(
+						event.path,
+						app_state.vk_core.logical_device,
+						app_state.swapchain.extent,
+						app_state.renderpipeline.render_pass,
+						&app_state.renderpipeline.layout,
+						&app_state.renderpipeline.grahpics_pipeline,
+					)
+				}
 			}
 		}
 		draw_frame(&app_state.vk_core, &app_state.renderpipeline, &app_state.swapchain)

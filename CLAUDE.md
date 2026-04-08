@@ -29,17 +29,18 @@ Build a full-featured 3D model editor with:
 
 **MAJOR PIVOT (2026-03-07): Switched from OpenGL to Vulkan**
 
-See `3d_editor_vulkan_learning_plan.md` for the milestone-driven Vulkan learning path:
+See `learning_plan/NodeGraph_plan.md` for the milestone-driven Vulkan learning path:
 - Phase 0: Vulkan Mental Model (architecture, sync primitives, validation)
 - Phase 1: Vulkan Bootstrap - The Gauntlet (7 lessons of infrastructure setup)
 - Phase 2: First Triangle (clear screen + graphics pipeline)
-- Phase 3-6: 3D rendering, textures, model loading, editor features
+- Phase 3: Shader Hot-Reload (file watching, dynamic compilation, pipeline rebuild)
+- Phase 4-6: Node graph system, visual editor
 
-Individual lessons in `vulkan_lessons/` directory (lesson_00 through lesson_09).
+Individual lessons in `learning_plan/vulkan_lessons/` directory (lesson_00 through lesson_10).
 
 **Old OpenGL plan:** `3d_editor_learning_plan.md` (archived for reference)
 
-**Current Status:** Completed Lessons 0-6 (mental model through command buffers). Ready for Lesson 7 (Synchronization).
+**Current Status:** Completed Lessons 0-9 (triangle rendering). Shader hot-reload working (Phase 3). Ready for Lesson 10 (Code Organization) or Phase 4 (Minimal Shader Graph).
 
 **Why Vulkan:**
 - Learn exactly what the GPU is doing (Vulkan hides nothing)
@@ -107,6 +108,28 @@ When working with this user, adopt the **Handmade Hero teaching approach**:
 **Exception**: You may show small code snippets (1-3 lines) to demonstrate syntax or a specific concept, but don't write complete functions or implementations.
 
 This is a **learning project**. The goal is understanding, not getting code written quickly.
+
+### Verify Before Guiding
+
+**CRITICAL: When the user indicates they've updated code, READ IT FIRST.**
+
+If the user says any of the following:
+- "I have updated..."
+- "I restructured..."
+- "I added..."
+- "I changed..."
+- "I refactored..."
+- "So I have..." (referring to code changes)
+
+**You MUST use the Read tool to see what they actually did before responding.**
+
+Why:
+- Don't make assumptions about their implementation
+- Guide based on their actual code, not what you think they might have done
+- Prevents giving advice that doesn't match their approach
+- Shows you're paying attention to their work
+
+This applies to ANY file they mention changing - main.odin, shader files, helper functions, etc.
 
 ### Core Principles
 
@@ -234,28 +257,50 @@ When discussing Vulkan and 3D graphics concepts:
 - `flake.nix` - Nix development environment
 - `3d_editor_learning_plan.md` - Learning curriculum
 
-**Expected Structure (as project develops):**
+**Current Structure:**
 ```
 vfx_tools/
-├── 3d_editor/
-│   ├── main.odin              # Entry point, Vulkan initialization
-│   ├── vulkan_instance.odin   # Instance, debug messenger
-│   ├── vulkan_device.odin     # Physical/logical device, queues
-│   ├── vulkan_swapchain.odin  # Swapchain management
-│   ├── vulkan_pipeline.odin   # Graphics pipeline creation
-│   ├── vulkan_commands.odin   # Command buffers, pools
-│   ├── camera.odin            # Camera system
-│   ├── mesh.odin              # Mesh loading/management
-│   ├── material.odin          # Material system
-│   ├── shaders/
-│   │   ├── triangle.vert      # GLSL vertex shader
-│   │   ├── triangle.frag      # GLSL fragment shader
-│   │   ├── triangle.vert.spv  # Compiled SPIR-V
-│   │   └── triangle.frag.spv  # Compiled SPIR-V
+├── editor/
+│   ├── main.odin              # Entry point, App_State, main loop
+│   ├── shader_reload.odin     # Hot-reload logic
+│   ├── internal/
+│   │   ├── file_watcher/      # File system monitoring
+│   │   └── shader/            # Slang compiler wrapper
+│   ├── assets/
+│   │   ├── shaders/           # .slang source files
+│   │   └── models/            # Procedural meshes (cube, sphere)
+│   └── camera.odin            # Camera system
+├── learning_plan/
+│   ├── NodeGraph_plan.md      # Master learning plan
+│   ├── vulkan_lessons/        # Individual lesson files (00-10)
+│   ├── learning_journal/      # Session logs
+│   └── node_creation_lessons.md # Node library curriculum
+└── CLAUDE.md                  # This file
+```
+
+**Expected Structure (after Lesson 10 - Code Organization):**
+```
+vfx_tools/
+├── editor/
+│   ├── main.odin              # Entry point, App_State (100-200 lines)
+│   ├── rendering.odin         # draw_frame, render loop
+│   ├── shader_reload.odin     # Hot-reload logic
+│   ├── vulkan/
+│   │   ├── instance.odin      # Instance, debug messenger, surface
+│   │   ├── device.odin        # Physical/logical device, queues
+│   │   ├── swapchain.odin     # Swapchain management
+│   │   ├── pipeline.odin      # Graphics pipeline creation
+│   │   ├── commands.odin      # Command buffers, pools
+│   │   └── sync.odin          # Semaphores, fences
+│   ├── internal/
+│   │   ├── file_watcher/
+│   │   └── shader/
 │   └── assets/
+│       ├── shaders/
 │       └── models/
-├── vulkan_lessons/            # Individual lesson files
-└── learning_journal/          # Session logs
+└── learning_plan/
+    ├── vulkan_lessons/        # lesson_00 through lesson_10
+    └── learning_journal/
 ```
 
 ## Key Odin Concepts to Reinforce
@@ -352,56 +397,55 @@ context.allocator = mem.arena_allocator(&arena)
 
 When the user asks a question, assume they want to **understand**, not just get code that works.
 
-## Current Session Notes (2026-03-07)
+## Current Status (2026-04-07)
 
-**Major Session: Vulkan Pivot**
+**Phase 2 Complete + Shader Hot-Reload Working**
 
-**Session Work:**
-- ✓ Created comprehensive Vulkan learning plan (`3d_editor_vulkan_learning_plan.md`)
-- ✓ Split into 10 modular lesson files (`vulkan_lessons/lesson_00` through `lesson_09`)
-- ✓ Established milestone-driven approach (console output, validation silence, visual confirmation)
-- ✓ Completed Phase 0: Vulkan Mental Model (conceptual understanding)
-- ✓ Validated understanding with quiz (6/6 perfect score)
-- ✓ Updated Nix flake with Vulkan packages
-- ✓ Environment ready for implementation
+**Completed Work:**
+- ✓ Phase 0: Vulkan Mental Model (lesson_00)
+- ✓ Phase 1: Vulkan Bootstrap (lessons 01-07)
+  - Instance, debug messenger, surface
+  - Physical device selection, logical device, queues
+  - Swapchain with image views
+  - Render pass and framebuffers
+  - Command pools and buffers
+  - Synchronization primitives (fences, semaphores)
+- ✓ Phase 2: First Triangle (lessons 08-09)
+  - Clear screen render loop
+  - Graphics pipeline creation
+  - Slang shader compilation (vertex + fragment)
+  - RGB triangle rendering
+- ✓ Phase 3: Shader Hot-Reload
+  - File watcher (inotify-based on Linux)
+  - Slang compilation wrapper (in-memory SPIR-V)
+  - Pipeline rebuild on shader change (device idle → destroy → recreate)
+  - Event deduplication (one event per file)
+  - Live shader editing confirmed working
 
-**Concepts Mastered:**
-- Vulkan pipeline architecture (11-stage mandatory flow)
-- Command recording vs execution (async model, render farm analogy)
-- Logical vs physical devices (isolation, one per app)
-- Synchronization primitives:
-  - Fences: CPU↔GPU (CPU waits for GPU)
-  - Semaphores: GPU↔GPU (GPU waits for GPU)
-  - Pipeline barriers: Memory visibility
-- Swapchain architecture (ringbuffer of 2-3 images, tear prevention)
-- Queue families vs queues vs command buffers (capability → endpoint → work)
-- Why BSODs were GPU-related (kernel-mode drivers, fixed by WDDM)
-- Validation layers as learning tool
+**Key Achievements:**
+- Triangle renders with RGB vertex colors
+- Edit `.slang` shader file → save → triangle updates without restart
+- Validation layers active, no errors
+- Complete Vulkan render loop with proper synchronization
+- In-memory shader compilation (no disk writes except source files)
 
-**Mental Models Established:**
-- Vulkan = render farm job submission
-- Logical device = database connection
-- Swapchain = film projector reel
-- Semaphores = relay race batons
-- Fences = notification bells
+**Architecture:**
+- 1100+ line `main.odin` (ready for reorganization - see lesson_10)
+- Separate `shader_reload.odin` for hot-reload logic
+- File watcher in `internal/file_watcher/`
+- Slang compiler wrapper in `internal/shader/`
 
-**Key Instruction:**
-When implementing Vulkan code, GUIDE through explanations. Show what needs to happen and why. User writes the code. Exception: Can provide complete boilerplate for Vulkan lessons since it's explicitly educational (they're following lesson files).
+**Next Steps:**
+- **Option 1**: Lesson 10 - Code Organization (split main.odin into modules)
+- **Option 2**: Phase 4 - Minimal Shader Graph (hardcode 3 nodes, generate code)
+- **Option 3**: Continue with additional Vulkan features (window resize, multiple pipelines)
 
-**Next Session:**
-- Begin Lesson 1: Instance + Debug Messenger
-- Create window with GLFW
-- Initialize Vulkan instance
-- Set up validation layers
-- Implement debug callback
-- Milestone: Console prints GPU info, validation active
-
-**Status:** Foundation complete. Mental model solid. Environment configured. Ready for implementation.
+**Status:** Core Vulkan + hot-reload foundation complete. Ready for shader graph system or further Vulkan exploration.
 
 **Learning Journal:**
-- Session logged in `learning_journal/session_2026-03-07_vulkan_pivot.md`
-- Comprehensive record of pivot decision, concepts, Q&A, and quiz results
-- Create new journal files for future sessions
+- Sessions logged in `learning_plan/learning_journal/`
+- Latest: Triangle rendering complete, shader hot-reload working
+- Lesson files in `learning_plan/vulkan_lessons/` (lesson_00 through lesson_10)
 
 ## Future Direction Context
 

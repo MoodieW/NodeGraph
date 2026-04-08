@@ -89,6 +89,7 @@ _linux_destroy_watch :: proc(w: ^Watcher) {
 
 _linux_poll_events :: proc(
 	w: ^Watcher,
+	file_filter: Maybe(string) = nil,
 	allocator := context.temp_allocator,
 ) -> (
 	[dynamic]File_Event,
@@ -155,6 +156,11 @@ _linux_poll_events :: proc(
 
 	}
 	for abspath in event_map {
+		if filter, ok := file_filter.?; ok {
+			if filepath.ext(abspath) != filter {
+				continue
+			}
+		}
 		append(&file_events, event_map[abspath])
 	}
 
