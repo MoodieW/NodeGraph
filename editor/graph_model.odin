@@ -1,5 +1,6 @@
 package main
 
+import "core:container/topological_sort"
 import "core:fmt"
 
 Graph :: struct {
@@ -42,13 +43,6 @@ Node :: struct {
 	},
 }
 
-Node_Data :: union {
-	Constant_Data,
-	Slider_Data,
-	Gradient_Data,
-}
-
-
 Constant_Data :: struct {
 	value: [4]f32,
 	len:   int,
@@ -85,7 +79,6 @@ create_node :: proc(g: ^Graph, type: Node_Type, allocator := context.allocator) 
 	node.type = type
 	switch type {
 	case .Float:
-		fmt.printfln("creating float: id - %d", node.id)
 		append(&node.outputs, Socket{"Value", .Float})
 		node.data = Constant_Data {
 			value = {0.5, 0, 0, 0},
@@ -115,6 +108,24 @@ connect :: proc(g: ^Graph, from_node: u32, from_socket: int, to_node: u32, to_so
 	append(&g.connections, conn)
 }
 
+eval_order :: proc(g: ^Graph) -> (sorted: [dynamic]u32, cycled: [dynamic]u32) {
+	sorter: topological_sort.Sorter(u32)
+	topological_sort.init(&sorter)
+	defer topological_sort.destroy(&sorter)
+
+	// Register all nodes
+	for id in g.nodes {
+		topological_sort.add_key(&sorter, id)
+	}
+
+	// Add dependencies — "to_node depends on from_node"
+	for conn in g.connections {
+		topological_sort.add_dependency(&sorter, conn.to_node, conn.from_node)
+	}
+
+	sorted, cycled = topological_sort.sort(&sorter)
+	return sorted, cycled
+}
 
 build_test_graph :: proc() -> Graph {
 	graph := Graph{}
@@ -146,7 +157,14 @@ build_test_graph :: proc() -> Graph {
 
 	// Connect: Add → Surface Output
 	connect(&graph, add, 0, output, 0)
+	sorted, cycled := eval_order(&graph)
+	defer delete(sorted)
+	defer delete(cycled)
 
+	if len(cycled) > 0 {
+		fmt.println("cycle detected!")
+	}
+	fmt.println(sorted)
 	return graph
 }
 
