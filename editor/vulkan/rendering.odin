@@ -10,13 +10,7 @@ draw_frame :: proc(
 	rp: ^RenderPipeline,
 	sc: ^Swap_Chain,
 ) {
-	vk.WaitForFences(
-		logical_device,
-		1,
-		&rp.in_flight_fences[rp.current_frame],
-		true,
-		max(u64),
-	)
+	vk.WaitForFences(logical_device, 1, &rp.in_flight_fences[rp.current_frame], true, max(u64))
 	vk.ResetFences(logical_device, 1, &rp.in_flight_fences[rp.current_frame])
 
 	image_index: u32
@@ -34,7 +28,6 @@ draw_frame :: proc(
 		sc.extent,
 		rp.render_pass,
 		rp.framebuffers[image_index],
-		rp.grahpics_pipeline,
 	)
 
 	wait_semaphores := [1]vk.Semaphore{rp.available_semaphores[rp.current_frame]}
@@ -50,12 +43,7 @@ draw_frame :: proc(
 		signalSemaphoreCount = 1,
 		pSignalSemaphores    = &signal_semphores[0],
 	}
-	if vk.QueueSubmit(
-		   graphics_queue,
-		   1,
-		   &submit_info,
-		   rp.in_flight_fences[rp.current_frame],
-	   ) !=
+	if vk.QueueSubmit(graphics_queue, 1, &submit_info, rp.in_flight_fences[rp.current_frame]) !=
 	   vk.Result.SUCCESS {
 		fmt.eprintln("Failed to submit to queue")
 	}
@@ -73,3 +61,4 @@ draw_frame :: proc(
 	vk.QueuePresentKHR(present_queue, &present_info)
 	rp.current_frame = (rp.current_frame + 1) % MAX_FRAMES_IN_FLIGHT
 }
+

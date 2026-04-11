@@ -16,6 +16,7 @@ App_State :: struct {
 	vk_core:          Vulkan_Core,
 	swapchain:        renderer.Swap_Chain,
 	renderpipeline:   renderer.RenderPipeline,
+	shader_cache:     renderer.Shader_Cache,
 	debug_messenger:  vk.DebugUtilsMessengerEXT,
 	surface:          vk.SurfaceKHR,
 	file_watcher:     watcher.Watcher,
@@ -56,6 +57,7 @@ main :: proc() {
 		&app_state.vk_core.present_queue,
 		&app_state.swapchain,
 		&app_state.renderpipeline,
+		&app_state.shader_cache,
 	) {
 		fmt.eprintln("Vulkan failed to load")
 		return
@@ -67,6 +69,7 @@ main :: proc() {
 		app_state.vk_core.logical_device,
 		&app_state.swapchain,
 		&app_state.renderpipeline,
+		&app_state.shader_cache,
 	)
 	shader_watcher, ok := watcher.create()
 	if !ok {
@@ -95,14 +98,18 @@ main :: proc() {
 			for event in events {
 				fmt.println(event)
 				if event.type == .Modified {
+					shader, exists := app_state.shader_cache.shaders[event.path]
+					if !exists {
+						app_state.shader_cache.shaders[event.path] = new(renderer.Shader)
+					}
 					fmt.println("reloading shader")
 					handle_shader_reload(
 						event.path,
 						app_state.vk_core.logical_device,
 						app_state.swapchain.extent,
 						app_state.renderpipeline.render_pass,
-						&app_state.renderpipeline.layout,
-						&app_state.renderpipeline.grahpics_pipeline,
+						&app_state.shader_cache.shaders[event.path].layout,
+						&app_state.shader_cache.shaders[event.path].pipeline,
 					)
 				}
 			}
@@ -117,3 +124,4 @@ main :: proc() {
 	}
 	vk.DeviceWaitIdle(app_state.vk_core.logical_device)
 }
+

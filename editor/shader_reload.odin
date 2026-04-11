@@ -23,8 +23,18 @@ handle_shader_reload :: proc(
 	defer delete(vertex_spriv)
 	defer delete(fragment_spriv)
 	vk.DeviceWaitIdle(device)
-	vk.DestroyPipeline(device, gp^, nil)
-	vk.DestroyPipelineLayout(device, layout^, nil)
-	return renderer._create_graphics_pipeline(fragment_spriv, vertex_spriv, device, extent, rp, layout, gp)
+	if gp^ != 0 {
+		vk.DestroyPipeline(device, gp^, nil)
+		vk.DestroyPipelineLayout(device, layout^, nil)
+	}
+	return renderer._create_graphics_pipeline(
+		fragment_spriv,
+		vertex_spriv,
+		device,
+		extent,
+		rp,
+		layout,
+		gp,
+	)
 }
 

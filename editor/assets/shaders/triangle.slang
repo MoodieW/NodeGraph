@@ -9,7 +9,7 @@ float4 vertexMain(uint vertexID: SV_VertexID, out float3 fragColor: COLOR) : SV_
     
   static const float3 colors[3] = {
     float3(0.0, 0.0, 1.0),
-    float3(1.0, 0.0, 0.0),
+    float3(1.0, 0.0, 1.0),
     float3(0.0, 0.0, 1.0),
   };
 

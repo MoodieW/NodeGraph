@@ -168,7 +168,3 @@ build_test_graph :: proc() -> Graph {
 	return graph
 }
 
-main :: proc() {
-	build_test_graph()
-}
-

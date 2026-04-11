@@ -24,8 +24,6 @@ RenderPipeline :: struct {
 	finished_semaphores:  []vk.Semaphore,
 	in_flight_fences:     [MAX_FRAMES_IN_FLIGHT]vk.Fence,
 	current_frame:        int,
-	layout:               vk.PipelineLayout,
-	grahpics_pipeline:    vk.Pipeline,
 }
 
 Swapchain_Support_Details :: struct {
@@ -238,3 +236,4 @@ cleanup_swapchain :: proc(
 	vk.DestroySwapchainKHR(device, swapchain.swapchain, nil)
 	delete(swapchain.images)
 }
+
