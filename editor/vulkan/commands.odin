@@ -53,6 +53,7 @@ record_command_buffer :: proc(
 	extent: vk.Extent2D,
 	renderpass: vk.RenderPass,
 	framebuffer: vk.Framebuffer,
+	pipeline: Maybe(vk.Pipeline) = nil,
 ) {
 	begin_info := vk.CommandBufferBeginInfo {
 		sType = .COMMAND_BUFFER_BEGIN_INFO,
@@ -76,7 +77,12 @@ record_command_buffer :: proc(
 		pClearValues = &clear_color,
 	}
 	vk.CmdBeginRenderPass(command_buffer, &render_pass_info, .INLINE)
+	if pipeline != nil {
+		vk.CmdBindPipeline(command_buffer, .GRAPHICS, pipeline.?)
+		vk.CmdDraw(command_buffer, 3, 1, 0, 0)
+	}
 	vk.CmdEndRenderPass(command_buffer)
+
 	if vk.EndCommandBuffer(command_buffer) != vk.Result.SUCCESS {
 		fmt.eprintfln("Failed to end command buffer")
 	}

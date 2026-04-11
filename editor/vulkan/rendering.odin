@@ -9,6 +9,7 @@ draw_frame :: proc(
 	present_queue: vk.Queue,
 	rp: ^RenderPipeline,
 	sc: ^Swap_Chain,
+	pipeline: Maybe(vk.Pipeline) = nil,
 ) {
 	vk.WaitForFences(logical_device, 1, &rp.in_flight_fences[rp.current_frame], true, max(u64))
 	vk.ResetFences(logical_device, 1, &rp.in_flight_fences[rp.current_frame])
@@ -28,6 +29,7 @@ draw_frame :: proc(
 		sc.extent,
 		rp.render_pass,
 		rp.framebuffers[image_index],
+		pipeline,
 	)
 
 	wait_semaphores := [1]vk.Semaphore{rp.available_semaphores[rp.current_frame]}

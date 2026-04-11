@@ -82,6 +82,8 @@ main :: proc() {
 		fmt.eprintfln("Could not add shader module to watch")
 		return
 	}
+
+	tri: Maybe(vk.Pipeline) = nil
 	app_state.shader_poll_time = time.now()
 	for !glfw.WindowShouldClose(app_state.window) {
 		free_all(context.temp_allocator)
@@ -111,15 +113,18 @@ main :: proc() {
 						&app_state.shader_cache.shaders[event.path].layout,
 						&app_state.shader_cache.shaders[event.path].pipeline,
 					)
+					tri = app_state.shader_cache.shaders[event.path].pipeline
 				}
 			}
 		}
+
 		renderer.draw_frame(
 			app_state.vk_core.logical_device,
 			app_state.vk_core.graphics_queue,
 			app_state.vk_core.present_queue,
 			&app_state.renderpipeline,
 			&app_state.swapchain,
+			tri,
 		)
 	}
 	vk.DeviceWaitIdle(app_state.vk_core.logical_device)
