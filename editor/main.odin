@@ -85,11 +85,17 @@ main :: proc() {
 
 	tri: Maybe(vk.Pipeline) = nil
 	app_state.shader_poll_time = time.now()
+	last := time.now()
 	for !glfw.WindowShouldClose(app_state.window) {
 		free_all(context.temp_allocator)
+
 		glfw.PollEvents()
 
 		now := time.now()
+		frame_time := time.diff(last, now)
+		fps := 1.0 / time.duration_seconds(frame_time)
+		last = now
+		glfw.SetWindowTitle(app_state.window, fmt.ctprintf("Vulkand Editor | FPS: %.0f", fps))
 		if time.diff(app_state.shader_poll_time, now) > 500 * time.Millisecond {
 			app_state.shader_poll_time = now
 			events, event_ok := watcher.poll_events(

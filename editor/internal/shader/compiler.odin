@@ -25,6 +25,8 @@ stage_map := [Stages]string {
 	.COMPUTE  = "compute",
 }
 
+compile_slang_str :: proc()
+
 compile_slang :: proc(
 	slang_path: string,
 	stage: Stages,
