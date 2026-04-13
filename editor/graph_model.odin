@@ -242,7 +242,6 @@ get_node_codegen :: proc(g: ^Graph, node_id: u32, state: enum {
 // Walks the sorted node list up to stop_node_id and emits a complete Slang
 // fragment shader function. Returned string is owned by the caller.
 eval_build :: proc(g: ^Graph, sorted: ^[dynamic]u32) -> string {
-	fmt.printfln("%v", sorted^)
 	orginal_allacator := context.allocator
 	arena: mem.Arena
 	arena_mem := make([]byte, 1 * mem.Megabyte)
@@ -290,20 +289,15 @@ eval_order :: proc(g: ^Graph, eval_node: u32) -> (sorted: [dynamic]u32, cycled: 
 	defer delete(needed_nodes)
 
 	collect_deps(g, eval_node, &needed_nodes)
-	fmt.printfln("%v", needed_nodes)
-
 	sorter: topological_sort.Sorter(u32)
 	topological_sort.init(&sorter)
 	defer topological_sort.destroy(&sorter)
 
 	for id in needed_nodes {
-		fmt.printfln("adding id : %d", id)
 		topological_sort.add_key(&sorter, id)
 	}
 	for conn in g.connections {
 		if needed_nodes[conn.from_node] && needed_nodes[conn.to_node] {
-			fmt.printfln("adding conn : %v", conn)
-			fmt.printfln("%v, %v", needed_nodes[conn.from_node], needed_nodes[conn.to_node])
 			topological_sort.add_dependency(&sorter, conn.to_node, conn.from_node)}
 	}
 
