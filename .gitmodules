@@ -1,0 +1,3 @@
+[submodule "editor/deps/odin-slang"]
+	path = editor/deps/odin-slang
+	url = https://github.com/DragosPopse/odin-slang
