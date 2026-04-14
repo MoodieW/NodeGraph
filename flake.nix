@@ -26,6 +26,7 @@
 
           shellHook = ''
             echo "Dev environment loaded"
+            export LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath [pkgs.gcc.cc]}:$PWD/editor/deps/odin-slang/slang/lib:$LD_LIBRARY_PATH
           '';
         };
       }

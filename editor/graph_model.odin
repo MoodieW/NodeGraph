@@ -17,12 +17,19 @@ Graph :: struct {
 
 Node :: struct {
 	id:          u32,
+	category:    Node_Category,
 	type:        Node_Type,
 	position:    [2]f32,
 	inputs:      [dynamic]Socket,
 	outputs:     [dynamic]Socket,
 	data:        Node_Data,
 	return_type: Data_Type,
+}
+
+Node_Category :: enum {
+	Input, // Leaf nodes (constants, inputs)
+	Operation, // Computation (add, multiply, etc.)
+	Output, // Final shader outputs
 }
 
 Node_Type :: enum {
@@ -94,25 +101,14 @@ create_node :: proc(g: ^Graph, type: Node_Type) -> u32 {
 	node.type = type
 	switch type {
 	case .Float:
-		append(&node.outputs, Socket{"Value", .Float})
-		node.data = Constant_Data {
-			value = {0.5, 0, 0, 0},
-			len   = 1,
-		}
-		node.return_type = .Float
+		setup_float_node(node)
 	case .Add:
-		node.return_type = .Float
-		append(&node.inputs, Socket{"A", .Float})
-		append(&node.inputs, Socket{"B", .Float})
-		append(&node.outputs, Socket{"Value", .Float})
+		setup_add_node(node)
 	case .Preview:
-		node.return_type = .Float4
-		append(&node.inputs, Socket{"Color", .Float4})
+		setup_preview_node(node)
 	case .Surface:
-		node.return_type = .Float4
-		append(&node.inputs, Socket{"Color", .Float4})
+		setup_surface_node(node)
 	}
-
 	g.nodes[node.id] = node
 	return node.id
 }
@@ -134,6 +130,41 @@ remove_graph :: proc(g: ^Graph) {
 }
 
 // =============================================================================
+// Node Builders
+// =============================================================================
+
+setup_float_node :: proc(node: ^Node) {
+	node.category = .Input
+	node.return_type = .Float
+	append(&node.outputs, Socket{"Value", .Float})
+	node.data = Constant_Data {
+		value = {0.5, 0, 0, 0},
+		len   = 1,
+	}
+}
+
+setup_add_node :: proc(node: ^Node) {
+	node.category = .Operation
+	node.return_type = .Float
+	append(&node.inputs, Socket{"A", .Float})
+	append(&node.inputs, Socket{"B", .Float})
+	append(&node.outputs, Socket{"Value", .Float})
+}
+
+setup_surface_node :: proc(node: ^Node) {
+	node.category = .Output
+	node.return_type = .Float4
+	append(&node.inputs, Socket{"Color", .Float4})
+}
+
+setup_preview_node :: proc(node: ^Node) {
+	node.category = .Output
+	node.return_type = .Float4
+	append(&node.inputs, Socket{"Color", .Float4})
+}
+
+
+// =============================================================================
 // Helpers
 // =============================================================================
 
@@ -143,7 +174,7 @@ _data_type_to_lower :: proc(st: Data_Type) -> string {
 }
 
 // Returns the generated output variable name for a node e.g. node_2_output
-_slang_var_name_out :: proc(id: u32) -> string {
+_node_name_out :: proc(id: u32) -> string {
 	return fmt.tprintf("node_%d_output", id)
 }
 
@@ -170,6 +201,7 @@ _get_constant_value :: proc(v: Constant_Data) -> union {
 // Code Generation
 // =============================================================================
 
+
 // Returns the output variable names of all nodes connected to node_id's inputs,
 // ordered by socket index. Caller owns the returned slice.
 get_inputs :: proc(g: ^Graph, node_id: u32) -> []string {
@@ -184,63 +216,12 @@ get_inputs :: proc(g: ^Graph, node_id: u32) -> []string {
 		input_order_map[conn.to_socket] = conn
 	}
 	for i in 0 ..< input_count {
-		results[i] = _slang_var_name_out(g.nodes[input_order_map[i].from_node].id)
+		results[i] = _node_name_out(g.nodes[input_order_map[i].from_node].id)
 	}
 	return results
 }
 
-// Returns the Slang code line for a single node.
-// is_signature: emits the function header
-// is_return:    emits the return statement and closing brace
-get_node_codegen :: proc(g: ^Graph, node_id: u32, state: enum {
-		Line,
-		Return,
-		Signature,
-	}) -> string {
-	current_node := g.nodes[node_id]
-	out_st := current_node.outputs
-	return_type := _data_type_to_lower(current_node.return_type)
-	// Handle early outs
-	switch state {
 
-	case .Signature:
-		return fmt.tprintf(
-			"[shader(\"fragment\")]\n%s %sFragmentMain() {{\n",
-			return_type,
-			_slang_var_name_out(current_node.id),
-		)
-
-	case .Return:
-		return fmt.tprintf("return %s;\n}}", _slang_var_name_out(current_node.id))
-
-	case .Line:
-		inputs := get_inputs(g, node_id)
-		defer delete(inputs)
-		#partial switch current_node.type {
-		case .Float:
-			value := _get_constant_value(current_node.data.(Constant_Data))
-			return fmt.tprintf(
-				"%s %s = %v; ",
-				return_type,
-				_slang_var_name_out(current_node.id),
-				value,
-			)
-		case .Add:
-			output_name := _slang_var_name_out(current_node.id)
-			return fmt.tprintf(
-				"%s %s = add(%s, %s);",
-				return_type,
-				output_name,
-				inputs[0],
-				inputs[1],
-			)
-		}
-	}
-	return ""
-}
-
-// Walks the sorted node list up to stop_node_id and emits a complete Slang
-// fragment shader function. Returned string is owned by the caller.
 eval_build :: proc(g: ^Graph, sorted: ^[dynamic]u32) -> string {
 	orginal_allacator := context.allocator
 	arena: mem.Arena
@@ -250,22 +231,85 @@ eval_build :: proc(g: ^Graph, sorted: ^[dynamic]u32) -> string {
 	arena_alloc := mem.arena_allocator(&arena)
 	context.allocator = arena_alloc
 
-	rs := strings.builder_make()
-	defer strings.builder_destroy(&rs)
-	last_node_id := g.nodes[sorted[len(sorted) - 1]].id
-	func_sig := get_node_codegen(g, last_node_id, .Signature)
-	strings.write_string(&rs, func_sig)
-	for node_id in sorted^ {
-		code_gen_snippet := get_node_codegen(g, node_id, .Line)
-		full_line := fmt.tprintfln("\t%s", code_gen_snippet)
-		strings.write_string(&rs, full_line)
+	target_node_id := sorted[len(sorted) - 1]
+	target_node := g.nodes[target_node_id]
+
+	push_constant_code := strings.builder_make()
+	defer strings.builder_destroy(&push_constant_code)
+	strings.write_string(&push_constant_code, "struct PushConstants {")
+
+	main_func_code := strings.builder_make()
+	defer strings.builder_destroy(&main_func_code)
+	strings.write_string(&main_func_code, "[shader(\"fragment\")]\n")
+	strings.write_string(
+		&main_func_code,
+		fmt.tprintf(
+			"%s %sFragmentMain(){{",
+			_data_type_to_lower(target_node.return_type),
+			_node_name_out(target_node_id),
+		),
+	)
+
+	for nid in sorted {
+		node := g.nodes[nid]
+
+		switch node.category {
+		case .Input:
+			push_c, main_c := eval_input_node(node)
+			strings.write_string(&push_constant_code, push_c)
+			strings.write_string(&main_func_code, main_c)
+		case .Operation:
+			main_c := eval_operation_node(g, node)
+			strings.write_string(&main_func_code, main_c)
+		case .Output:
+			main_c := eval_output_node(g, node)
+			strings.write_string(&main_func_code, main_c)
+		}
 	}
 
-	strings.write_string(&rs, fmt.tprintf("\t%s\n", get_node_codegen(g, last_node_id, .Return)))
+	close_push_const := fmt.tprintf(
+		"\n}};\n\n[[vk::push_constant]]\ncbuffer pc : PushConstants;\n",
+	)
+	strings.write_string(&push_constant_code, close_push_const)
+	main_close := fmt.tprintf("\n\treturn %s;\n}", _node_name_out(target_node_id))
+	strings.write_string(&main_func_code, main_close)
+
 	context.allocator = orginal_allacator
-	codegen := strings.clone(strings.to_string(rs))
-	return codegen
+	return strings.concatenate(
+		{strings.to_string(push_constant_code), "\n", strings.to_string(main_func_code)},
+		allocator = context.allocator,
+	)
 }
+
+eval_input_node :: proc(node: ^Node) -> (push_constant_code: string, main_func_code: string) {
+	output_var := _node_name_out(node.id)
+	dt := _data_type_to_lower(node.return_type)
+	push_constant_code = fmt.tprintf("\n\t%s %s;", dt, output_var)
+
+	// Read from push constant in main
+	main_func_code = fmt.tprintf("\n\t%s %s = pc.%s;", dt, output_var, output_var)
+	return push_constant_code, main_func_code
+}
+
+eval_operation_node :: proc(g: ^Graph, node: ^Node) -> (main_func_code: string) {
+	inputs := get_inputs(g, node.id)
+	node_type := node.type
+	dt := _data_type_to_lower(node.return_type)
+	#partial switch node_type {
+	case .Add:
+		input_a := inputs[0]
+		input_b := inputs[1]
+		output := _node_name_out(node.id)
+		return fmt.tprintf("\n\t%s %s = add(%s, %s);", dt, output, input_a, input_b)
+
+	}
+	return ""
+}
+
+eval_output_node :: proc(g: ^Graph, node: ^Node) -> (main_func_code: string) {
+	return ""
+}
+
 
 collect_deps :: proc(g: ^Graph, node_id: u32, node_map: ^map[u32]bool) {
 	// Already visited, avoid infinite recursion
