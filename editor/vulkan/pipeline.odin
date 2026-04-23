@@ -2,6 +2,7 @@ package renderer
 
 import "core:fmt"
 import "core:os"
+import "core:slice"
 import vk "vendor:vulkan"
 
 read_file :: proc(filepath: string) -> ([]byte, bool) {
@@ -14,10 +15,12 @@ read_file :: proc(filepath: string) -> ([]byte, bool) {
 }
 
 create_shader_module :: proc(device: vk.Device, code: []byte) -> (vk.ShaderModule, bool) {
+	words := slice.reinterpret([]u32, code)
+
 	create_info := vk.ShaderModuleCreateInfo {
 		sType    = .SHADER_MODULE_CREATE_INFO,
 		codeSize = len(code),
-		pCode    = cast(^u32)raw_data(code),
+		pCode    = cast(^u32)raw_data(words), // code needs to be in 32bit words
 	}
 	shader_module: vk.ShaderModule
 	result := vk.CreateShaderModule(device, &create_info, nil, &shader_module)
@@ -29,53 +32,49 @@ create_shader_module :: proc(device: vk.Device, code: []byte) -> (vk.ShaderModul
 	return shader_module, true
 }
 
-create_graphics_pipeline :: proc(
-	device: vk.Device,
-	extent: vk.Extent2D,
-	renderpass: vk.RenderPass,
-	layout: ^vk.PipelineLayout,
-	gp: ^vk.Pipeline,
-) -> bool {
-	vert_code, vert_ok := read_file("./assets/shaders/triangle.vert.spv")
-	if !vert_ok do return false
-	defer delete(vert_code)
+// create_graphics_pipeline :: proc(
+// 	device: vk.Device,
+// 	extent: vk.Extent2D,
+// 	renderpass: vk.RenderPass,
+// 	layout: ^vk.PipelineLayout,
+// 	gp: ^vk.Pipeline,
+// ) -> bool {
+// 	vert_code, vert_ok := read_file("./assets/shaders/triangle.vert.spv")
+// 	if !vert_ok do return false
+// 	defer delete(vert_code)
 
-	frag_code, frag_ok := read_file("./assets/shaders/triangle.frag.spv")
-	if !frag_ok do return false
-	defer delete(frag_code)
+// 	frag_code, frag_ok := read_file("./assets/shaders/triangle.frag.spv")
+// 	if !frag_ok do return false
+// 	defer delete(frag_code)
 
-	return _create_graphics_pipeline(frag_code, vert_code, device, extent, renderpass, layout, gp)
-}
+// 	return _create_graphics_pipeline(frag_code, vert_code, device, extent, renderpass, layout, gp)
+// }
 
 _create_graphics_pipeline :: proc(
-	frag_code: []byte,
-	vert_code: []byte,
+	code: []byte,
 	device: vk.Device,
 	extent: vk.Extent2D,
 	renderpass: vk.RenderPass,
 	layout: ^vk.PipelineLayout,
 	gp: ^vk.Pipeline,
 ) -> bool {
-	vert_module, vert_mod_ok := create_shader_module(device, vert_code)
-	if !vert_mod_ok do return false
-	defer vk.DestroyShaderModule(device, vert_module, nil)
+	code_module, code_mod_ok := create_shader_module(device, code)
+	if !code_mod_ok do return false
+	defer vk.DestroyShaderModule(device, code_module, nil)
 
-	frag_module, frag_mod_ok := create_shader_module(device, frag_code)
-	if !frag_mod_ok do return false
-	defer vk.DestroyShaderModule(device, frag_module, nil)
 
 	vert_stage := vk.PipelineShaderStageCreateInfo {
 		sType  = .PIPELINE_SHADER_STAGE_CREATE_INFO,
 		stage  = {.VERTEX},
-		module = vert_module,
-		pName  = "main",
+		module = code_module,
+		pName  = "vertexmain",
 	}
 
 	frag_stage := vk.PipelineShaderStageCreateInfo {
 		sType  = .PIPELINE_SHADER_STAGE_CREATE_INFO,
 		stage  = {.FRAGMENT},
-		module = frag_module,
-		pName  = "main",
+		module = code_module,
+		pName  = "fragmentmain",
 	}
 
 	shader_stages := [2]vk.PipelineShaderStageCreateInfo{vert_stage, frag_stage}
@@ -120,7 +119,7 @@ _create_graphics_pipeline :: proc(
 		rasterizerDiscardEnable = false,
 		polygonMode             = .FILL,
 		lineWidth               = 1.0,
-		cullMode                = {.BACK},
+		cullMode                = {},
 		frontFace               = .CLOCKWISE,
 		depthBiasEnable         = false,
 	}

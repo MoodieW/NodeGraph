@@ -11,11 +11,14 @@ draw_frame :: proc(
 	sc: ^Swap_Chain,
 	pipeline: Maybe(vk.Pipeline) = nil,
 ) {
+	if pipeline != nil {
+		fmt.println(pipeline)
+	}
 	vk.WaitForFences(logical_device, 1, &rp.in_flight_fences[rp.current_frame], true, max(u64))
 	vk.ResetFences(logical_device, 1, &rp.in_flight_fences[rp.current_frame])
 
 	image_index: u32
-	vk.AcquireNextImageKHR(
+	acquire_result := vk.AcquireNextImageKHR(
 		logical_device,
 		sc.swapchain,
 		max(u64),
@@ -23,6 +26,12 @@ draw_frame :: proc(
 		0,
 		&image_index,
 	)
+	// fmt.printfln(
+	// 	"Acquire result: %v image_index=%d current_frame=%d",
+	// 	acquire_result,
+	// 	image_index,
+	// 	rp.current_frame,
+	// )
 	vk.ResetCommandBuffer(rp.commandbuffers[image_index], {})
 	record_command_buffer(
 		rp.commandbuffers[image_index],
@@ -60,7 +69,13 @@ draw_frame :: proc(
 		pImageIndices      = &image_index,
 	}
 
-	vk.QueuePresentKHR(present_queue, &present_info)
+	present_result := vk.QueuePresentKHR(present_queue, &present_info)
+	// fmt.printfln(
+	// 	"Present result: %v image_index=%d current_frame=%d",
+	// 	present_result,
+	// 	image_index,
+	// 	rp.current_frame,
+	// )
 	rp.current_frame = (rp.current_frame + 1) % MAX_FRAMES_IN_FLIGHT
 }
 

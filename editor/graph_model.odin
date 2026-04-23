@@ -399,7 +399,7 @@ build_test_graph :: proc() {
 	delete(val)
 }
 
-main :: proc() {
-	build_test_graph()
-}
+// main :: proc() {
+// 	build_test_graph()
+// }
 

@@ -90,6 +90,7 @@ main :: proc() {
 		free_all(context.temp_allocator)
 
 		glfw.PollEvents()
+		// 	fmt.println("after poll")
 
 		now := time.now()
 		frame_time := time.diff(last, now)
@@ -123,7 +124,6 @@ main :: proc() {
 				}
 			}
 		}
-
 		renderer.draw_frame(
 			app_state.vk_core.logical_device,
 			app_state.vk_core.graphics_queue,

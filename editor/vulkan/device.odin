@@ -1,6 +1,7 @@
 package renderer
 
 import "core:fmt"
+import "core:text/match"
 import vk "vendor:vulkan"
 
 Queue_Family_Indices :: struct {
@@ -76,11 +77,17 @@ is_device_suitable :: proc(device: vk.PhysicalDevice, surface: vk.SurfaceKHR) ->
 	return has_swapchain
 }
 
+Device_Scores :: struct {
+	device: vk.PhysicalDevice,
+	name:   cstring,
+	score:  uint,
+}
 pick_physical_device :: proc(
 	instance: vk.Instance,
 	surface: vk.SurfaceKHR,
 	store_device: ^vk.PhysicalDevice,
 ) -> bool {
+
 	fmt.printfln("func %d", vk.EnumeratePhysicalDevices)
 	if vk.EnumeratePhysicalDevices == nil {
 		fmt.eprintln("vk.EnumeratePhysicalDevices is NULL! Proc addresses not loaded!")
@@ -100,7 +107,10 @@ pick_physical_device :: proc(
 	defer delete(devices)
 
 	vk.EnumeratePhysicalDevices(instance, &device_count, raw_data(devices))
-
+	fmt.println("DEVICE COUNT", device_count)
+	scores: [dynamic]Device_Scores
+	scores = make([dynamic]Device_Scores, len(devices))
+	defer delete(scores)
 	for device, i in devices {
 		if !is_device_suitable(device, surface) {
 			continue
@@ -108,14 +118,39 @@ pick_physical_device :: proc(
 
 		props: vk.PhysicalDeviceProperties
 		vk.GetPhysicalDeviceProperties(device, &props)
+
 		device_name := cstring(&props.deviceName[0])
-		fmt.printfln("Selected GPU: %d", device_name)
-		store_device^ = device
+
+		scores[i].device = device
+		scores[i].name = device_name
+		#partial switch props.deviceType {
+		case .DISCRETE_GPU:
+			scores[i].score += 50
+		case .INTEGRATED_GPU:
+			scores[i].score += 25
+		case .VIRTUAL_GPU:
+			scores[i].score += 10
+
+		}
+		best_score: uint
+		device_score: Device_Scores
+		for device in scores {
+			if device.score < best_score do continue
+			best_score = device.score
+			device_score = device
+		}
+		if best_score == 0 do return false
+		fmt.printfln("Selected GPU: %s", device_score.name)
+		store_device^ = device_score.device
 		return true
+
+
 	}
+
 	fmt.eprintln("No Suitable GPU")
 	return false
 }
+
 
 create_logical_device :: proc(
 	p_device: vk.PhysicalDevice,
@@ -124,6 +159,7 @@ create_logical_device :: proc(
 	p_queue: ^vk.Queue,
 	surface: vk.SurfaceKHR,
 ) -> bool {
+
 	fmt.println("Find Family Queues")
 	indices := find_family_queues(p_device, surface)
 	unique_queue_families := make(map[u32]bool)
@@ -179,3 +215,4 @@ create_logical_device :: proc(
 	fmt.println("Logical Device Created")
 	return true
 }
+
