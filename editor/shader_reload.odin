@@ -3,10 +3,12 @@ package main
 import "./internal/shader"
 import "core:fmt"
 import "core:slice"
+import "core:strings"
 import vk "vendor:vulkan"
 import renderer "vulkan"
 
 import sp "deps/odin-slang/slang"
+
 
 in_mem_handle_reload :: proc(path: string) -> Maybe([]byte) {
 	global_session: ^sp.IGlobalSession
@@ -34,10 +36,9 @@ in_mem_handle_reload :: proc(path: string) -> Maybe([]byte) {
 	defer session->release()
 
 	blob: ^sp.IBlob
-	module: ^sp.IModule = session->loadModule(
-		"./deps/odin-slang/example/triangle.slang",
-		&diagnostic,
-	)
+	c_path := strings.clone_to_cstring(path)
+	// defer delete(c_path)
+	module: ^sp.IModule = session->loadModule(c_path, &diagnostic)
 	if module == nil {
 		fmt.println("shader compile error! ", diagnostic)
 		return nil
@@ -49,11 +50,11 @@ in_mem_handle_reload :: proc(path: string) -> Maybe([]byte) {
 	print_reflection(module)
 
 	fragment_entry: ^sp.IEntryPoint
-	r = module->findEntryPointByName("fragmentmain", &fragment_entry)
+	r = module->findEntryPointByName("fragmentMain", &fragment_entry)
 	slang_check(r)
 
 	vertex_entry: ^sp.IEntryPoint
-	r = module->findEntryPointByName("vertexmain", &vertex_entry)
+	r = module->findEntryPointByName("vertexMain", &vertex_entry)
 	slang_check(r)
 
 	if vertex_entry == nil {

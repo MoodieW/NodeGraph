@@ -52,6 +52,8 @@ deinit_vulkan :: proc(
 	vk.DestroyCommandPool(logical_device, rp.command_pool, nil)
 	delete(rp.commandbuffers)
 
+	remove_geo(logical_device, &rp.geo_mem)
+
 	cleanup_swapchain(logical_device, sc, rp)
 	remove_shader_cache(logical_device, shader_cache)
 	vk.DestroyRenderPass(logical_device, rp.render_pass, nil)

@@ -24,6 +24,15 @@ RenderPipeline :: struct {
 	finished_semaphores:  []vk.Semaphore,
 	in_flight_fences:     [MAX_FRAMES_IN_FLIGHT]vk.Fence,
 	current_frame:        int,
+	geo_mem:              GeoMemory,
+}
+
+GeoMemory :: struct {
+	vertex_buffer:        vk.Buffer,
+	vertex_buffer_memory: vk.DeviceMemory,
+	index_buffer:         vk.Buffer,
+	index_buffer_memory:  vk.DeviceMemory,
+	index_count:          u32,
 }
 
 Swapchain_Support_Details :: struct {
@@ -31,6 +40,15 @@ Swapchain_Support_Details :: struct {
 	present_modes: []vk.PresentModeKHR,
 	formats:       []vk.SurfaceFormatKHR,
 }
+
+
+remove_geo :: proc(device: vk.Device, geo_mem: ^GeoMemory) {
+	vk.DestroyBuffer(device, geo_mem.index_buffer, nil)
+	vk.FreeMemory(device, geo_mem.index_buffer_memory, nil)
+	vk.DestroyBuffer(device, geo_mem.vertex_buffer, nil)
+	vk.FreeMemory(device, geo_mem.vertex_buffer_memory, nil)
+}
+
 
 query_swapchain_support :: proc(
 	device: vk.PhysicalDevice,

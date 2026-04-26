@@ -29,7 +29,7 @@ Build a full-featured 3D model editor with:
 
 **MAJOR PIVOT (2026-03-07): Switched from OpenGL to Vulkan**
 
-See `learning_plan/NodeGraph_plan.md` for the milestone-driven Vulkan learning path:
+See `learning_plan/plans/NodeGraph_plan.md` for the milestone-driven Vulkan learning path:
 - Phase 0: Vulkan Mental Model (architecture, sync primitives, validation)
 - Phase 1: Vulkan Bootstrap - The Gauntlet (7 lessons of infrastructure setup)
 - Phase 2: First Triangle (clear screen + graphics pipeline)
@@ -271,10 +271,16 @@ vfx_tools/
 │   │   └── models/            # Procedural meshes (cube, sphere)
 │   └── camera.odin            # Camera system
 ├── learning_plan/
-│   ├── NodeGraph_plan.md      # Master learning plan
-│   ├── vulkan_lessons/        # Individual lesson files (00-10)
-│   ├── learning_journal/      # Session logs
-│   └── node_creation_lessons.md # Node library curriculum
+│   ├── plans/
+│   │   └── NodeGraph_plan.md          # Master learning plan
+│   ├── vulkan_lessons/                # Individual lesson files (00-10)
+│   ├── learning_journal/              # Session logs
+│   ├── node_library/
+│   │   └── node_creation_lessons.md   # Node library curriculum
+│   ├── phase4/                        # Phase 4 implementation notes
+│   ├── slang/                         # Slang reference material
+│   └── vision/
+│       └── future_direction.md        # Long-term shader graph vision
 └── CLAUDE.md                  # This file
 ```
 
@@ -449,12 +455,12 @@ When the user asks a question, assume they want to **understand**, not just get 
 
 ## Future Direction Context
 
-**IMPORTANT**: The file `future_direction.md` contains the long-term vision for this project (shader graph system). This context should **ONLY** be referenced when:
+**IMPORTANT**: The file `learning_plan/vision/future_direction.md` contains the long-term vision for this project (shader graph system). This context should **ONLY** be referenced when:
 
 1. **All Vulkan lessons (0-9) are complete**, OR
 2. **User explicitly asks about future plans/shader graph**
 
-**Do NOT pull in future_direction.md during lessons 1-9 unless user specifically asks.**
+**Do NOT pull in `learning_plan/vision/future_direction.md` during lessons 1-9 unless user specifically asks.**
 
 **Why**: Keep focus on learning Vulkan fundamentals. The shader graph is a future milestone that builds on completed foundation.
 
@@ -464,7 +470,7 @@ When the user asks a question, assume they want to **understand**, not just get 
 - When user asks "what's next after the lessons?"
 - When discussing Slang usage beyond basic shaders
 
-**What future_direction.md contains**:
+**What `learning_plan/vision/future_direction.md` contains**:
 - Shader graph system vision (Houdini + Substance Designer inspired)
 - Implementation phases (4 phases after lesson 9)
 - Technical architecture (node graph → Slang codegen → SPIR-V)

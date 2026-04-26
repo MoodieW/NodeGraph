@@ -53,6 +53,7 @@ record_command_buffer :: proc(
 	extent: vk.Extent2D,
 	renderpass: vk.RenderPass,
 	framebuffer: vk.Framebuffer,
+	geo: ^GeoMemory,
 	pipeline: Maybe(vk.Pipeline) = nil,
 ) {
 	begin_info := vk.CommandBufferBeginInfo {
@@ -63,6 +64,7 @@ record_command_buffer :: proc(
 		fmt.eprintfln("Failed to  Begin Command Buffer: %d")
 		return
 	}
+
 
 	clear_color := vk.ClearValue {
 		color = {float32 = {0.0, 0.0, 0.0, 1.0}},
@@ -78,8 +80,12 @@ record_command_buffer :: proc(
 	}
 	vk.CmdBeginRenderPass(command_buffer, &render_pass_info, .INLINE)
 	if pipeline != nil {
+		vertex_buffers := [1]vk.Buffer{geo.vertex_buffer}
+		offsets := [1]vk.DeviceSize{0}
 		vk.CmdBindPipeline(command_buffer, .GRAPHICS, pipeline.?)
-		vk.CmdDraw(command_buffer, 3, 1, 0, 0)
+		vk.CmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffers[0], &offsets[0])
+		vk.CmdBindIndexBuffer(command_buffer, geo.index_buffer, 0, .UINT32)
+		vk.CmdDrawIndexed(command_buffer, geo.index_count, 1, 0, 0, 0)
 	}
 	vk.CmdEndRenderPass(command_buffer)
 

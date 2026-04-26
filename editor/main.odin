@@ -82,10 +82,19 @@ main :: proc() {
 		fmt.eprintfln("Could not add shader module to watch")
 		return
 	}
-
+	quad_ok := renderer.create_quad_geo(
+		app_state.vk_core.logical_device,
+		app_state.vk_core.phyiscal_device,
+		&app_state.renderpipeline.geo_mem,
+	)
+	if !quad_ok {
+		fmt.eprintln("Failed to create quad")
+		return
+	}
 	tri: Maybe(vk.Pipeline) = nil
 	app_state.shader_poll_time = time.now()
 	last := time.now()
+
 	for !glfw.WindowShouldClose(app_state.window) {
 		free_all(context.temp_allocator)
 
@@ -130,6 +139,7 @@ main :: proc() {
 			app_state.vk_core.present_queue,
 			&app_state.renderpipeline,
 			&app_state.swapchain,
+			&app_state.renderpipeline.geo_mem,
 			tri,
 		)
 	}
