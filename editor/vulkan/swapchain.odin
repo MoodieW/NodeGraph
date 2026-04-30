@@ -27,6 +27,13 @@ RenderPipeline :: struct {
 	geo_mem:              GeoMemory,
 }
 
+OffscreenTarget :: struct {
+	image:        vk.Image,
+	image_view:   vk.ImageView,
+	frame_buffer: vk.Framebuffer,
+	frame_memory: vk.DeviceMemory,
+}
+
 GeoMemory :: struct {
 	vertex_buffer:        vk.Buffer,
 	vertex_buffer_memory: vk.DeviceMemory,
@@ -39,6 +46,91 @@ Swapchain_Support_Details :: struct {
 	capabilities:  vk.SurfaceCapabilitiesKHR,
 	present_modes: []vk.PresentModeKHR,
 	formats:       []vk.SurfaceFormatKHR,
+}
+
+create_offscreen_target :: proc(
+	device: vk.Device,
+	physical_device: vk.PhysicalDevice,
+	render_pass: vk.RenderPass,
+	extent: vk.Extent2D,
+	format: vk.Format,
+) -> (
+	OffscreenTarget,
+	bool,
+) {
+	oft: OffscreenTarget
+	image_create_info := vk.ImageCreateInfo {
+		sType       = .IMAGE_CREATE_INFO,
+		imageType   = .D2,
+		extent      = vk.Extent3D{extent.width, extent.height, 1},
+		usage       = {.COLOR_ATTACHMENT},
+		sharingMode = .EXCLUSIVE,
+		mipLevels   = 1,
+		arrayLayers = 1,
+		format      = format,
+	}
+	vk.CreateImage(device, &image_create_info, nil, &oft.image)
+
+	mem_reqs: vk.MemoryRequirements
+	vk.GetImageMemoryRequirements(device, oft.image, &mem_reqs)
+	found_index, mem_ok := find_memory_type(
+		physical_device,
+		mem_reqs.memoryTypeBits,
+		{.HOST_VISIBLE, .HOST_COHERENT},
+	)
+	if !mem_ok {
+		fmt.eprintln("Could not find memory type")
+		return oft, false
+	}
+	mem_alloc_info := vk.MemoryAllocateInfo {
+		sType           = .MEMORY_ALLOCATE_INFO,
+		allocationSize  = mem_reqs.size,
+		memoryTypeIndex = found_index,
+	}
+	if vk.AllocateMemory(device, &mem_alloc_info, nil, &oft.frame_memory) != vk.Result.SUCCESS {
+		fmt.eprintfln("Could not allocate mem")
+		return oft, false
+	}
+	if vk.BindImageMemory(device, oft.image, oft.frame_memory, 0) != vk.Result.SUCCESS {
+		fmt.eprintln("Could no bind image memory")
+		return oft, false
+	}
+
+	image_create_view_info := vk.ImageViewCreateInfo {
+		sType = .IMAGE_VIEW_CREATE_INFO,
+		image = oft.image,
+		viewType = .D2,
+		format = format,
+		components = {r = .IDENTITY, g = .IDENTITY, b = .IDENTITY, a = .IDENTITY},
+		subresourceRange = {
+			aspectMask = {.COLOR},
+			baseMipLevel = 0,
+			levelCount = 1,
+			baseArrayLayer = 0,
+			layerCount = 1,
+		},
+	}
+	imgv_ok := vk.CreateImageView(device, &image_create_view_info, nil, &oft.image_view)
+	if imgv_ok != vk.Result.SUCCESS {
+		fmt.eprintln("Could not create image view")
+		return oft, false
+	}
+	attachemnts := [1]vk.ImageView{oft.image_view}
+	frame_buffer_info := vk.FramebufferCreateInfo {
+		sType           = .FRAMEBUFFER_CREATE_INFO,
+		renderPass      = render_pass,
+		attachmentCount = 1,
+		pAttachments    = &attachemnts[0],
+		height          = extent.height,
+		width           = extent.width,
+		layers          = 1,
+	}
+	result := vk.CreateFramebuffer(device, &frame_buffer_info, nil, &oft.frame_buffer)
+	if result != vk.Result.SUCCESS {
+		fmt.eprintfln("Failed to create offscreen framebuffer")
+		return oft, false
+	}
+	return oft, true
 }
 
 

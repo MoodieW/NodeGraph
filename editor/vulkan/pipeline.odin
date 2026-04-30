@@ -12,13 +12,19 @@ Vertex :: struct {
 	uv:       [2]f32,
 }
 
-quad_vertices :: [4]Vertex {
-	{{-1, -1}, {0, 1}},
-	{{1, -1}, {1, 1}},
-	{{1, 1}, {1, 0}},
-	{{-1, 1}, {0, 0}},
-}
 quad_indices :: [6]u32{0, 1, 2, 0, 2, 3}
+
+append_quad :: proc(verts: ^[dynamic]Vertex, indices: ^[dynamic]u32, min: [2]f32, max: [2]f32) {
+	base := u32(len(verts^))
+	append(verts, Vertex{{min.x, min.y}, {0, 1}})
+	append(verts, Vertex{{max.x, min.y}, {1, 1}})
+	append(verts, Vertex{{max.x, max.y}, {1, 0}})
+	append(verts, Vertex{{min.x, max.y}, {0, 0}})
+
+	for index in quad_indices {
+		append(indices, base + index)
+	}
+}
 
 // Convenience wrapper for current hardcoded quad test geometry.
 // Uses generic upload path to create vertex/index buffers and upload quad data.
@@ -27,9 +33,15 @@ create_quad_geo :: proc(
 	p_device: vk.PhysicalDevice,
 	geo_mem: ^GeoMemory,
 ) -> bool {
-	q_verts := quad_vertices
-	q_indices := quad_indices
-	return create_geo(l_device, p_device, q_verts[:], q_indices[:], geo_mem)
+	verts := make([dynamic]Vertex)
+	defer delete(verts)
+	indices := make([dynamic]u32)
+	defer delete(indices)
+
+	append_quad(&verts, &indices, {-0.95, -0.75}, {-0.10, 0.75})
+	append_quad(&verts, &indices, {0.10, -0.45}, {0.95, 0.45})
+
+	return create_geo(l_device, p_device, verts[:], indices[:], geo_mem)
 }
 
 // Create GPU buffers for CPU-side vertex/index arrays and upload bytes into them.
@@ -458,6 +470,62 @@ create_render_pass :: proc(
 	return true
 }
 
+
+create_offscreen_render_pass :: proc(
+	device: vk.Device,
+	format: vk.Format,
+	render_pass: ^vk.RenderPass,
+) -> bool {
+	color_attachment := vk.AttachmentDescription {
+		format         = format,
+		loadOp         = .CLEAR,
+		samples        = {._1},
+		storeOp        = .STORE,
+		stencilLoadOp  = .DONT_CARE,
+		stencilStoreOp = .DONT_CARE,
+		initialLayout  = .UNDEFINED,
+		finalLayout    = .SHADER_READ_ONLY_OPTIMAL,
+	}
+
+	color_attchement_ref := vk.AttachmentReference {
+		attachment = 0,
+		layout     = .COLOR_ATTACHMENT_OPTIMAL,
+	}
+
+	subpass := vk.SubpassDescription {
+		pipelineBindPoint    = .GRAPHICS,
+		colorAttachmentCount = 1,
+		pColorAttachments    = &color_attchement_ref,
+	}
+
+	dependecy := vk.SubpassDependency {
+		srcSubpass    = vk.SUBPASS_EXTERNAL,
+		dstSubpass    = 0,
+		srcStageMask  = {.COLOR_ATTACHMENT_OUTPUT},
+		srcAccessMask = {},
+		dstStageMask  = {.COLOR_ATTACHMENT_OUTPUT},
+		dstAccessMask = {.COLOR_ATTACHMENT_WRITE},
+	}
+
+	render_pass_info := vk.RenderPassCreateInfo {
+		sType           = .RENDER_PASS_CREATE_INFO,
+		attachmentCount = 1,
+		pAttachments    = &color_attachment,
+		subpassCount    = 1,
+		pSubpasses      = &subpass,
+		dependencyCount = 1,
+		pDependencies   = &dependecy,
+	}
+
+	result := vk.CreateRenderPass(device, &render_pass_info, nil, render_pass)
+	if result != vk.Result.SUCCESS {
+		fmt.eprintfln("Failed to create render pass: %v", result)
+		return false
+	}
+
+	fmt.println("Render Pass Created")
+	return true
+}
 create_framebuffers :: proc(
 	device: vk.Device,
 	renderpass: vk.RenderPass,
