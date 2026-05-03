@@ -24,6 +24,8 @@ init_vulkan :: proc(
 	if !create_swapchain(window, physical_device^, logical_device^, surface^, sc) do return false
 	if !create_image_views(logical_device^, sc) do return false
 	if !create_render_pass(logical_device^, sc.format, &rp.render_pass) do return false
+
+	create_offscreen_render_pass(logical_device^, sc.format, &rp.offscreen_render_pass)
 	create_shader_cache(shader_cache)
 	// if !create_graphics_pipeline(logical_device^, sc.extent, rp.render_pass, &rp.layout, &rp.grahpics_pipeline) do return false
 	if !create_framebuffers(logical_device^, rp.render_pass, sc.views, sc.extent, &rp.framebuffers) do return false
@@ -53,9 +55,13 @@ deinit_vulkan :: proc(
 	delete(rp.commandbuffers)
 
 	remove_geo(logical_device, &rp.geo_mem)
+	if rp.offscreen_target_valid {
+		remove_off_screen_target(logical_device, &rp.offscrent_target)
+	}
 
 	cleanup_swapchain(logical_device, sc, rp)
 	remove_shader_cache(logical_device, shader_cache)
+	vk.DestroyRenderPass(logical_device, rp.offscreen_render_pass, nil)
 	vk.DestroyRenderPass(logical_device, rp.render_pass, nil)
 	vk.DestroyDevice(logical_device, nil)
 	vk.DestroySurfaceKHR(vk_instance, surface, nil)

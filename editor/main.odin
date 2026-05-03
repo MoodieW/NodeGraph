@@ -2,8 +2,6 @@ package main
 
 import "base:runtime"
 import "core:fmt"
-import la "core:math/linalg"
-import "core:os"
 import "core:time"
 import "vendor:glfw"
 import vk "vendor:vulkan"
@@ -92,13 +90,52 @@ main :: proc() {
 		return
 	}
 	tri: Maybe(vk.Pipeline) = nil
+	default_shader_path := "./assets/shaders/triangle.slang"
+	app_state.shader_cache.shaders[default_shader_path] = new(renderer.Shader)
+	if handle_shader_reload(
+		default_shader_path,
+		app_state.vk_core.logical_device,
+		app_state.swapchain.extent,
+		app_state.renderpipeline.render_pass,
+		&app_state.shader_cache.shaders[default_shader_path].layout,
+		&app_state.shader_cache.shaders[default_shader_path].pipeline,
+	) {
+		tri = app_state.shader_cache.shaders[default_shader_path].pipeline
+	}
 	app_state.shader_poll_time = time.now()
 	last := time.now()
-
+	space_was_down := false
 	for !glfw.WindowShouldClose(app_state.window) {
 		free_all(context.temp_allocator)
 
 		glfw.PollEvents()
+		space_is_down := glfw.GetKey(app_state.window, glfw.KEY_SPACE) == glfw.PRESS
+		if space_is_down && !space_was_down {
+			if !app_state.renderpipeline.offscreen_target_valid {
+				target, ok := renderer.create_offscreen_target(
+					app_state.vk_core.logical_device,
+					app_state.vk_core.phyiscal_device,
+					app_state.renderpipeline.offscreen_render_pass,
+					app_state.swapchain.extent,
+					app_state.swapchain.format,
+				)
+				if ok {
+					fmt.println("Offscreen Toggle on")
+					app_state.renderpipeline.offscreen_target_valid = !app_state.renderpipeline.offscreen_target_valid
+					app_state.renderpipeline.offscrent_target = target
+					app_state.renderpipeline.offscreen_dirty = true
+				}
+			} else {
+				fmt.println("Offscreen Toggle off")
+				app_state.renderpipeline.offscreen_target_valid = !app_state.renderpipeline.offscreen_target_valid
+				renderer.remove_off_screen_target(
+					app_state.vk_core.logical_device,
+					&app_state.renderpipeline.offscrent_target,
+				)
+			}
+		}
+		space_was_down = space_is_down
+
 		// 	fmt.println("after poll")
 
 		now := time.now()
@@ -139,7 +176,6 @@ main :: proc() {
 			app_state.vk_core.present_queue,
 			&app_state.renderpipeline,
 			&app_state.swapchain,
-			&app_state.renderpipeline.geo_mem,
 			tri,
 		)
 	}

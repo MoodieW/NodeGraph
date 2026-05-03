@@ -16,15 +16,24 @@ Swap_Chain :: struct {
 }
 
 RenderPipeline :: struct {
-	render_pass:          vk.RenderPass,
-	framebuffers:         []vk.Framebuffer,
-	commandbuffers:       []vk.CommandBuffer,
-	command_pool:         vk.CommandPool,
-	available_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore,
-	finished_semaphores:  []vk.Semaphore,
-	in_flight_fences:     [MAX_FRAMES_IN_FLIGHT]vk.Fence,
-	current_frame:        int,
-	geo_mem:              GeoMemory,
+	render_pass:                   vk.RenderPass,
+	framebuffers:                  []vk.Framebuffer,
+	commandbuffers:                []vk.CommandBuffer,
+	command_pool:                  vk.CommandPool,
+	available_semaphores:          [MAX_FRAMES_IN_FLIGHT]vk.Semaphore,
+	finished_semaphores:           []vk.Semaphore,
+	in_flight_fences:              [MAX_FRAMES_IN_FLIGHT]vk.Fence,
+	current_frame:                 int,
+	geo_mem:                       GeoMemory,
+
+	// Testing off screen texture shit
+	offscreen_render_pass:         vk.RenderPass,
+	offscrent_target:              OffscreenTarget,
+	offscreen_target_valid:        bool,
+	offscreen_dirty:               bool,
+	texture_descriptor_set_layout: vk.DescriptorSetLayout,
+	texture_descriptor_pool:       vk.DescriptorPool,
+	texture_descriptor_set:        vk.DescriptorSet,
 }
 
 OffscreenTarget :: struct {
@@ -32,6 +41,7 @@ OffscreenTarget :: struct {
 	image_view:   vk.ImageView,
 	frame_buffer: vk.Framebuffer,
 	frame_memory: vk.DeviceMemory,
+	sampler:      vk.Sampler,
 }
 
 GeoMemory :: struct {
@@ -46,6 +56,14 @@ Swapchain_Support_Details :: struct {
 	capabilities:  vk.SurfaceCapabilitiesKHR,
 	present_modes: []vk.PresentModeKHR,
 	formats:       []vk.SurfaceFormatKHR,
+}
+
+remove_off_screen_target :: proc(device: vk.Device, oft: ^OffscreenTarget) {
+	vk.DestroyFramebuffer(device, oft.frame_buffer, nil)
+	vk.DestroySampler(device, oft.sampler, nil)
+	vk.DestroyImageView(device, oft.image_view, nil)
+	vk.DestroyImage(device, oft.image, nil)
+	vk.FreeMemory(device, oft.frame_memory, nil)
 }
 
 create_offscreen_target :: proc(
@@ -63,23 +81,28 @@ create_offscreen_target :: proc(
 		sType       = .IMAGE_CREATE_INFO,
 		imageType   = .D2,
 		extent      = vk.Extent3D{extent.width, extent.height, 1},
-		usage       = {.COLOR_ATTACHMENT},
+		usage       = {.COLOR_ATTACHMENT, .SAMPLED},
 		sharingMode = .EXCLUSIVE,
 		mipLevels   = 1,
 		arrayLayers = 1,
 		format      = format,
+		samples     = {._1},
 	}
-	vk.CreateImage(device, &image_create_info, nil, &oft.image)
+	if vk.CreateImage(device, &image_create_info, nil, &oft.image) != vk.Result.SUCCESS {
+		fmt.eprint("Failed to create offscreen image")
+		return oft, false
+	}
 
 	mem_reqs: vk.MemoryRequirements
 	vk.GetImageMemoryRequirements(device, oft.image, &mem_reqs)
 	found_index, mem_ok := find_memory_type(
 		physical_device,
 		mem_reqs.memoryTypeBits,
-		{.HOST_VISIBLE, .HOST_COHERENT},
+		{.DEVICE_LOCAL},
 	)
 	if !mem_ok {
 		fmt.eprintln("Could not find memory type")
+		vk.DestroyImage(device, oft.image, nil)
 		return oft, false
 	}
 	mem_alloc_info := vk.MemoryAllocateInfo {
@@ -89,10 +112,13 @@ create_offscreen_target :: proc(
 	}
 	if vk.AllocateMemory(device, &mem_alloc_info, nil, &oft.frame_memory) != vk.Result.SUCCESS {
 		fmt.eprintfln("Could not allocate mem")
+		vk.DestroyImage(device, oft.image, nil)
 		return oft, false
 	}
 	if vk.BindImageMemory(device, oft.image, oft.frame_memory, 0) != vk.Result.SUCCESS {
 		fmt.eprintln("Could no bind image memory")
+		vk.DestroyImage(device, oft.image, nil)
+		vk.FreeMemory(device, oft.frame_memory, nil)
 		return oft, false
 	}
 
@@ -113,8 +139,31 @@ create_offscreen_target :: proc(
 	imgv_ok := vk.CreateImageView(device, &image_create_view_info, nil, &oft.image_view)
 	if imgv_ok != vk.Result.SUCCESS {
 		fmt.eprintln("Could not create image view")
+		vk.DestroyImage(device, oft.image, nil)
+		vk.FreeMemory(device, oft.frame_memory, nil)
 		return oft, false
 	}
+
+	sampler_info := vk.SamplerCreateInfo {
+		sType                   = .SAMPLER_CREATE_INFO,
+		magFilter               = .LINEAR,
+		minFilter               = .LINEAR,
+		addressModeU            = .CLAMP_TO_EDGE,
+		addressModeV            = .CLAMP_TO_EDGE,
+		addressModeW            = .CLAMP_TO_EDGE,
+		anisotropyEnable        = false,
+		borderColor             = .INT_OPAQUE_BLACK,
+		unnormalizedCoordinates = false,
+		compareEnable           = false,
+		mipmapMode              = .LINEAR,
+	}
+	if vk.CreateSampler(device, &sampler_info, nil, &oft.sampler) != vk.Result.SUCCESS {
+		vk.DestroyImageView(device, oft.image_view, nil)
+		vk.DestroyImage(device, oft.image, nil)
+		vk.FreeMemory(device, oft.frame_memory, nil)
+		return oft, false
+	}
+
 	attachemnts := [1]vk.ImageView{oft.image_view}
 	frame_buffer_info := vk.FramebufferCreateInfo {
 		sType           = .FRAMEBUFFER_CREATE_INFO,
@@ -128,6 +177,10 @@ create_offscreen_target :: proc(
 	result := vk.CreateFramebuffer(device, &frame_buffer_info, nil, &oft.frame_buffer)
 	if result != vk.Result.SUCCESS {
 		fmt.eprintfln("Failed to create offscreen framebuffer")
+		vk.DestroySampler(device, oft.sampler, nil)
+		vk.DestroyImageView(device, oft.image_view, nil)
+		vk.DestroyImage(device, oft.image, nil)
+		vk.FreeMemory(device, oft.frame_memory, nil)
 		return oft, false
 	}
 	return oft, true

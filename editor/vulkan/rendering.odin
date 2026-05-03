@@ -9,7 +9,6 @@ draw_frame :: proc(
 	present_queue: vk.Queue,
 	rp: ^RenderPipeline,
 	sc: ^Swap_Chain,
-	geo: ^GeoMemory,
 	pipeline: Maybe(vk.Pipeline) = nil,
 ) {
 	vk.WaitForFences(logical_device, 1, &rp.in_flight_fences[rp.current_frame], true, max(u64))
@@ -34,9 +33,8 @@ draw_frame :: proc(
 	record_command_buffer(
 		rp.commandbuffers[image_index],
 		sc.extent,
-		rp.render_pass,
-		rp.framebuffers[image_index],
-		geo,
+		rp,
+		image_index,
 		pipeline,
 	)
 
@@ -77,4 +75,3 @@ draw_frame :: proc(
 	// )
 	rp.current_frame = (rp.current_frame + 1) % MAX_FRAMES_IN_FLIGHT
 }
-
